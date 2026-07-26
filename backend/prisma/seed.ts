@@ -91,6 +91,20 @@ async function main() {
     },
   });
 
+  // Phase 9: AUTO, unconditionally -- no confidence threshold applies
+  // (matches the architecture doc's policy table). Distinct from
+  // ADVISORY_ONLY: FinalRenderer has no advisory annotation and no
+  // downstream human judgment at all, see approval/policyResolver.ts's AUTO
+  // branch.
+  await prisma.approvalPolicy.upsert({
+    where: { skillName: "FinalRenderer" },
+    update: { policyType: PolicyType.AUTO, confidenceThreshold: null },
+    create: {
+      skillName: "FinalRenderer",
+      policyType: PolicyType.AUTO,
+    },
+  });
+
   // Phase 6: the report generation policy catalog. Metadata only (English
   // columns) -- the actual Dutch prompt instructions live in
   // src/ai/prompts/reportTypes/{key}.md, referenced by promptRef. Adding a

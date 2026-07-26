@@ -72,6 +72,7 @@ enum PolicyType {
   AUTO_IF_ABOVE
   MANDATORY
   ADVISORY_ONLY
+  AUTO
 }
 
 enum ActorType {
@@ -139,6 +140,7 @@ model Workflow {
   drafts                Draft[]
   draftPrechecks        DraftPrecheck[]
   reviewFeedback        ReviewFeedback[]
+  finalReport           FinalReport?
 
   @@map("workflows")
 }
@@ -240,6 +242,7 @@ model AiOutput {
   reportTypeSuggestions ReportTypeSuggestion[]
   drafts                Draft[]
   draftPrechecks        DraftPrecheck[]
+  finalReports          FinalReport[]
 
   @@map("ai_outputs")
 }
@@ -426,6 +429,7 @@ model Draft {
 
   draftPrechecks DraftPrecheck[]
   reviewFeedback ReviewFeedback[]
+  finalReports   FinalReport[]
 
   @@unique([workflowId, version])
   @@map("drafts")
@@ -472,6 +476,29 @@ model ReviewFeedback {
   createdAt   DateTime @default(now()) @map("created_at")
 
   @@map("review_feedback")
+}
+
+// One row per completed workflow (Phase 9) -- COMPLETED is terminal
+// (workflow/states.ts's TERMINAL_STATES) with no re-entry edge back into
+// GENERATING_FINAL, so unlike Draft/Merge this is NOT versioned;
+// @@unique(workflowId) enforces "at most one". Rendered content itself lives
+// in object storage (storageRef), mirroring Transcript/Note's pattern -- not
+// inlined as DB Json, since the download endpoint implies a real file
+// artifact. Written by jobs/runners/finalRendererRunner.ts, not the gateway.
+model FinalReport {
+  id         String   @id @default(uuid())
+  workflowId String   @unique @map("workflow_id")
+  workflow   Workflow @relation(fields: [workflowId], references: [id])
+  draftId    String   @map("draft_id")
+  draft      Draft    @relation(fields: [draftId], references: [id])
+  aiOutputId String   @map("ai_output_id")
+  aiOutput   AiOutput @relation(fields: [aiOutputId], references: [id])
+  title      String
+  format     String   @default("markdown")
+  storageRef String   @map("storage_ref")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@map("final_reports")
 }
 
 model ApprovalPolicy {

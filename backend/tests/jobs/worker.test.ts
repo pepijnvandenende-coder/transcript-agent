@@ -4,7 +4,7 @@ import path from "node:path";
 import { ActorType, JobStatus, JobType, PolicyType } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { retryApprovalRequest } from "../../src/approval/gateway";
-import { requestDraftChanges } from "../../src/approval/draftReview";
+import { approveDraft, requestDraftChanges } from "../../src/approval/draftReview";
 import { selectReportType } from "../../src/approval/reportTypeSelection";
 import { env } from "../../src/config/env";
 import { enqueue } from "../../src/jobs/queue";
@@ -12,6 +12,7 @@ import { processNextJob } from "../../src/jobs/worker";
 import { prisma } from "../../src/persistence/prismaClient";
 import { createNoteVersion } from "../../src/persistence/repositories/noteRepository";
 import { createTranscriptVersion } from "../../src/persistence/repositories/transcriptRepository";
+import { localFilesystemStorage } from "../../src/storage/localFilesystemStorage";
 import * as engine from "../../src/workflow/engine";
 import { WorkflowState } from "../../src/workflow/states";
 
@@ -23,6 +24,7 @@ const REPORT_TYPE_ADVISOR_SKILL_NAME = "ReportTypeAdvisor";
 const DRAFT_GENERATOR_SKILL_NAME = "DraftGenerator";
 const DRAFT_QUALITY_PRECHECK_SKILL_NAME = "DraftQualityPrecheck";
 const DRAFT_REVISER_SKILL_NAME = "DraftReviser";
+const FINAL_RENDERER_SKILL_NAME = "FinalRenderer";
 
 // claimNextQueuedJob() claims the globally oldest QUEUED job across every
 // workflow, not just this test's own -- and other test files (e.g.
@@ -87,6 +89,11 @@ describe("jobs: queue + processNextJob (no daemon required)", () => {
       update: { policyType: PolicyType.MANDATORY, confidenceThreshold: null },
       create: { skillName: DRAFT_REVISER_SKILL_NAME, policyType: PolicyType.MANDATORY },
     });
+    await prisma.approvalPolicy.upsert({
+      where: { skillName: FINAL_RENDERER_SKILL_NAME },
+      update: { policyType: PolicyType.AUTO, confidenceThreshold: null },
+      create: { skillName: FINAL_RENDERER_SKILL_NAME, policyType: PolicyType.AUTO },
+    });
     await prisma.reportTypePolicy.upsert({
       where: { key: "thematic" },
       update: {},
@@ -147,6 +154,7 @@ describe("jobs: queue + processNextJob (no daemon required)", () => {
     await prisma.reportTypeSuggestion.deleteMany({ where: { workflowId } });
     await prisma.draftPrecheck.deleteMany({ where: { workflowId } });
     await prisma.reviewFeedback.deleteMany({ where: { workflowId } });
+    await prisma.finalReport.deleteMany({ where: { workflowId } });
     await prisma.draft.deleteMany({ where: { workflowId } });
     await prisma.aiOutput.deleteMany({ where: { workflowId } });
     await prisma.job.deleteMany({ where: { workflowId } });
@@ -342,19 +350,57 @@ describe("jobs: queue + processNextJob (no daemon required)", () => {
     expect(notulen?.content).toContain("Voeg meer detail toe over de genomen besluiten.");
   });
 
-  it("marks a job FAILED when no runner is registered for its job_type", async () => {
-    // GENERATE_DRAFT, DRAFT_QUALITY_PRECHECK, and REVISE_DRAFT are now
-    // registered too (Phases 6-8) -- RENDER_FINAL is the next
-    // still-unregistered job_type.
-    const job = await prisma.job.create({
-      data: { workflowId, jobType: JobType.RENDER_FINAL, status: JobStatus.QUEUED },
+  it("entering DRAFT_QUALITY_PRECHECK for the revised draft auto-enqueued a DRAFT_QUALITY_PRECHECK job, which processNextJob also completes", async () => {
+    // Continues from the previous test: REVISE_DRAFT completing landed back
+    // on DRAFT_QUALITY_PRECHECK (per the revision loop), auto-enqueuing a
+    // fresh precheck job for the v2 draft via the same enqueueForStateEntry
+    // mechanism.
+    const queuedPrecheck = await prisma.job.findFirstOrThrow({
+      where: { workflowId, jobType: JobType.DRAFT_QUALITY_PRECHECK },
+      orderBy: { createdAt: "desc" },
     });
 
-    await processUntilSettled(job.id);
+    await processUntilSettled(queuedPrecheck.id);
 
-    const reloaded = await prisma.job.findUniqueOrThrow({ where: { id: job.id } });
-    expect(reloaded.status).toBe(JobStatus.FAILED);
-    expect(reloaded.error).toMatch(/No runner registered/);
+    const completed = await prisma.job.findUniqueOrThrow({ where: { id: queuedPrecheck.id } });
+    expect(completed.status).toBe(JobStatus.SUCCEEDED);
+
+    const workflow = await prisma.workflow.findUniqueOrThrow({ where: { id: workflowId } });
+    expect(workflow.currentState).toBe(WorkflowState.DRAFT_PENDING_REVIEW);
+  });
+
+  it("approveDraft auto-enqueued a RENDER_FINAL job, which processNextJob also completes, reaching COMPLETED with a final report", async () => {
+    // The real flow: approval/draftReview.ts's approveDraft() finalizes the
+    // draft's ai_output and (via enqueueForStateEntry) auto-starts
+    // FinalRenderer's job the same way every other PROCESSING-state entry
+    // does. This is the last skill in the pipeline -- the workflow reaches
+    // its terminal state here.
+    const draft = await prisma.draft.findFirstOrThrow({ where: { workflowId }, orderBy: { version: "desc" } });
+
+    const updated = await approveDraft({ workflowId, actorId: userId, version: draft.version });
+    expect(updated.currentState).toBe(WorkflowState.GENERATING_FINAL);
+
+    const queuedRender = await prisma.job.findFirstOrThrow({
+      where: { workflowId, jobType: JobType.RENDER_FINAL },
+      orderBy: { createdAt: "desc" },
+    });
+
+    await processUntilSettled(queuedRender.id);
+
+    const completed = await prisma.job.findUniqueOrThrow({ where: { id: queuedRender.id } });
+    expect(completed.status).toBe(JobStatus.SUCCEEDED);
+    expect(completed.resultAiOutputId).not.toBeNull();
+
+    const workflow = await prisma.workflow.findUniqueOrThrow({ where: { id: workflowId } });
+    expect(workflow.currentState).toBe(WorkflowState.COMPLETED);
+    expect(workflow.status).toBe("COMPLETED");
+
+    const finalReport = await prisma.finalReport.findUniqueOrThrow({ where: { workflowId } });
+    expect(finalReport.draftId).toBe(draft.id);
+    expect(finalReport.aiOutputId).toBe(completed.resultAiOutputId);
+
+    const content = await localFilesystemStorage.get(finalReport.storageRef);
+    expect(content).toContain("Voeg meer detail toe over de genomen besluiten.");
   });
 
   it("retry lineage flows from a manually-enqueued retry job through to the resulting ai_outputs row", async () => {

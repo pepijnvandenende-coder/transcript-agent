@@ -195,6 +195,28 @@ const SKILL_ROUTING: Record<string, SkillRouting> = {
     // DraftQualityPrecheck -- no new AiOutputInputType.
     inputs: [],
   },
+  FinalRenderer: {
+    events: {
+      // AUTO -- policyResolver.ts resolves this skill's outcome to
+      // "auto_approved" unconditionally, so autoApproved is the event that
+      // actually fires on the valid path, same shape as DraftQualityPrecheck's
+      // entry above. lowConfidence/schemaInvalid are unused placeholders.
+      autoApproved: "final_rendered",
+      lowConfidence: "final_rendered",
+      schemaInvalid: "final_rendered",
+      // Used on the schema-invalid path only (there's no
+      // PENDING_HUMAN_CONFIRMATION edge for GENERATING_FINAL to fall back
+      // to) -- never used on the valid path, since this skill's outcome is
+      // always "auto_approved".
+      bypassEvent: "final_rendered",
+    },
+    nextState: WorkflowState.COMPLETED,
+    originatingState: WorkflowState.GENERATING_FINAL,
+    jobType: JobType.RENDER_FINAL,
+    // Reads the latest `drafts` output, same lineage scope decision as every
+    // later-phase skill above -- no new AiOutputInputType.
+    inputs: [],
+  },
 };
 
 function routingFor(skillName: string): SkillRouting {

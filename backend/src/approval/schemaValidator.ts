@@ -4,6 +4,7 @@ import {
   DraftGeneratorEnvelopeSchema,
   DraftQualityPrecheckEnvelopeSchema,
   DraftReviserEnvelopeSchema,
+  FinalRendererEnvelopeSchema,
   MergerEnvelopeSchema,
   ReportTypeAdvisorEnvelopeSchema,
   TranscriptQualityEnvelopeSchema,
@@ -25,6 +26,7 @@ const SCHEMAS: Record<string, z.ZodTypeAny> = {
   DraftGenerator: DraftGeneratorEnvelopeSchema,
   DraftQualityPrecheck: DraftQualityPrecheckEnvelopeSchema,
   DraftReviser: DraftReviserEnvelopeSchema,
+  FinalRenderer: FinalRendererEnvelopeSchema,
 };
 
 export function checkSchema(skillName: string, rawOutput: unknown): SchemaCheckResult {

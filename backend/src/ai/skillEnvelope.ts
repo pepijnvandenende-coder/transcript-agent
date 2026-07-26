@@ -137,3 +137,17 @@ export const DraftReviserEnvelopeSchema = SkillEnvelopeSchema.extend({
   result: DraftReviserResultSchema,
 });
 export type DraftReviserEnvelope = z.infer<typeof DraftReviserEnvelopeSchema>;
+
+// Phase 9: FinalRenderer's result -- AUTO, the sparsest result of any skill
+// (architecture doc: "rendered: true, typically template-only, no LLM"). The
+// actual rendered content lives in object storage (see
+// ai/skills/finalRenderer.ts's renderContent()), not in this envelope.
+export const FinalRendererResultSchema = z.object({
+  rendered: z.literal(true),
+});
+export type FinalRendererResult = z.infer<typeof FinalRendererResultSchema>;
+
+export const FinalRendererEnvelopeSchema = SkillEnvelopeSchema.extend({
+  result: FinalRendererResultSchema,
+});
+export type FinalRendererEnvelope = z.infer<typeof FinalRendererEnvelopeSchema>;

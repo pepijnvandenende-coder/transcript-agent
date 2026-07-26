@@ -12,6 +12,7 @@ const REPORT_TYPE_ADVISOR_SKILL_NAME = "ReportTypeAdvisor";
 const DRAFT_GENERATOR_SKILL_NAME = "DraftGenerator";
 const DRAFT_QUALITY_PRECHECK_SKILL_NAME = "DraftQualityPrecheck";
 const DRAFT_REVISER_SKILL_NAME = "DraftReviser";
+const FINAL_RENDERER_SKILL_NAME = "FinalRenderer";
 
 describe("policyResolver.resolvePolicy", () => {
   beforeAll(async () => {
@@ -70,6 +71,14 @@ describe("policyResolver.resolvePolicy", () => {
       create: {
         skillName: DRAFT_REVISER_SKILL_NAME,
         policyType: PolicyType.MANDATORY,
+      },
+    });
+    await prisma.approvalPolicy.upsert({
+      where: { skillName: FINAL_RENDERER_SKILL_NAME },
+      update: { policyType: PolicyType.AUTO, confidenceThreshold: null },
+      create: {
+        skillName: FINAL_RENDERER_SKILL_NAME,
+        policyType: PolicyType.AUTO,
       },
     });
   });
@@ -162,6 +171,14 @@ describe("policyResolver.resolvePolicy", () => {
 
     const low = await resolvePolicy({ skillName: DRAFT_REVISER_SKILL_NAME, result: {}, confidence: 0.01 });
     expect(low.outcome).toBe("mandatory");
+  });
+
+  it("FinalRenderer's AUTO policy returns outcome 'auto_approved' unconditionally, regardless of confidence", async () => {
+    const high = await resolvePolicy({ skillName: FINAL_RENDERER_SKILL_NAME, result: {}, confidence: 0.99 });
+    expect(high.outcome).toBe("auto_approved");
+
+    const low = await resolvePolicy({ skillName: FINAL_RENDERER_SKILL_NAME, result: {}, confidence: 0.01 });
+    expect(low.outcome).toBe("auto_approved");
   });
 });
 

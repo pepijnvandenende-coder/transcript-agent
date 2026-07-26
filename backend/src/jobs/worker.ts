@@ -4,6 +4,7 @@ import { runDetectConflictsJob } from "./runners/conflictDetectionRunner";
 import { runDraftQualityPrecheckJob } from "./runners/draftQualityPrecheckRunner";
 import { runGenerateDraftJob } from "./runners/draftGenerationRunner";
 import { runReviseDraftJob } from "./runners/draftReviserRunner";
+import { runRenderFinalJob } from "./runners/finalRendererRunner";
 import { runMergeJob } from "./runners/mergeRunner";
 import { runSuggestReportTypeJob } from "./runners/suggestReportTypeRunner";
 import { runValidateTranscriptJob } from "./runners/validateTranscriptRunner";
@@ -31,6 +32,7 @@ const RUNNERS: Partial<Record<JobType, JobRunner>> = {
   [JobType.GENERATE_DRAFT]: runGenerateDraftJob,
   [JobType.DRAFT_QUALITY_PRECHECK]: runDraftQualityPrecheckJob,
   [JobType.REVISE_DRAFT]: runReviseDraftJob,
+  [JobType.RENDER_FINAL]: runRenderFinalJob,
 };
 
 /**

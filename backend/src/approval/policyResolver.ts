@@ -53,6 +53,15 @@ export async function resolvePolicy(params: {
   if (policy.policyType === PolicyType.ADVISORY_ONLY) {
     return { policyType: policy.policyType, outcome: "auto_approved" };
   }
+  // Phase 9: AUTO is identical in outcome to ADVISORY_ONLY (unconditional
+  // auto_approved, regardless of confidence) but is its own PolicyType so
+  // ai_outputs.policy_applied stays honest -- FinalRenderer has no advisory
+  // annotation and no downstream human judgment at all, unlike
+  // DraftQualityPrecheck's ADVISORY_ONLY (see gateway.ts's FinalRenderer
+  // SKILL_ROUTING entry).
+  if (policy.policyType === PolicyType.AUTO) {
+    return { policyType: policy.policyType, outcome: "auto_approved" };
+  }
 
   // AUTO_IF_ABOVE
   const threshold = policy.confidenceThreshold ?? 1;
