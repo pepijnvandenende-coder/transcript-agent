@@ -1,5 +1,10 @@
 import type { z } from "zod";
-import { ConflictDetectorEnvelopeSchema, MergerEnvelopeSchema, TranscriptQualityEnvelopeSchema } from "../ai/skillEnvelope";
+import {
+  ConflictDetectorEnvelopeSchema,
+  MergerEnvelopeSchema,
+  ReportTypeAdvisorEnvelopeSchema,
+  TranscriptQualityEnvelopeSchema,
+} from "../ai/skillEnvelope";
 
 export interface SchemaCheckResult {
   valid: boolean;
@@ -13,6 +18,7 @@ const SCHEMAS: Record<string, z.ZodTypeAny> = {
   TranscriptQualityChecker: TranscriptQualityEnvelopeSchema,
   Merger: MergerEnvelopeSchema,
   ConflictDetector: ConflictDetectorEnvelopeSchema,
+  ReportTypeAdvisor: ReportTypeAdvisorEnvelopeSchema,
 };
 
 export function checkSchema(skillName: string, rawOutput: unknown): SchemaCheckResult {

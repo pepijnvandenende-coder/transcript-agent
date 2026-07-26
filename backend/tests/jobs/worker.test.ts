@@ -17,6 +17,7 @@ import { WorkflowState } from "../../src/workflow/states";
 const SKILL_NAME = "TranscriptQualityChecker";
 const MERGER_SKILL_NAME = "Merger";
 const CONFLICT_DETECTOR_SKILL_NAME = "ConflictDetector";
+const REPORT_TYPE_ADVISOR_SKILL_NAME = "ReportTypeAdvisor";
 
 // claimNextQueuedJob() claims the globally oldest QUEUED job across every
 // workflow, not just this test's own -- and other test files (e.g.
@@ -61,6 +62,11 @@ describe("jobs: queue + processNextJob (no daemon required)", () => {
       update: { policyType: PolicyType.AUTO_IF_ABOVE, confidenceThreshold: 0.7 },
       create: { skillName: CONFLICT_DETECTOR_SKILL_NAME, policyType: PolicyType.AUTO_IF_ABOVE, confidenceThreshold: 0.7 },
     });
+    await prisma.approvalPolicy.upsert({
+      where: { skillName: REPORT_TYPE_ADVISOR_SKILL_NAME },
+      update: { policyType: PolicyType.MANDATORY, confidenceThreshold: null },
+      create: { skillName: REPORT_TYPE_ADVISOR_SKILL_NAME, policyType: PolicyType.MANDATORY },
+    });
 
     const user = await prisma.user.create({
       data: { name: "Worker Test User", email: `worker-test-${randomUUID()}@example.com`, role: "reviewer" },
@@ -92,6 +98,7 @@ describe("jobs: queue + processNextJob (no daemon required)", () => {
     await prisma.merge.deleteMany({ where: { workflowId } });
     await prisma.aiOutputInput.deleteMany({ where: { aiOutput: { workflowId } } });
     await prisma.conflict.deleteMany({ where: { workflowId } });
+    await prisma.reportTypeSuggestion.deleteMany({ where: { workflowId } });
     await prisma.aiOutput.deleteMany({ where: { workflowId } });
     await prisma.job.deleteMany({ where: { workflowId } });
     await prisma.transcript.deleteMany({ where: { workflowId } });
@@ -167,11 +174,37 @@ describe("jobs: queue + processNextJob (no daemon required)", () => {
     expect(conflictCount).toBe(0);
   });
 
+  it("auto-approving DETECT_CONFLICTS auto-enqueued a SUGGEST_REPORT_TYPE job, which processNextJob also completes", async () => {
+    // Continues from the previous test: entering SUGGESTING_REPORT_TYPE
+    // auto-enqueued this job via the same enqueueForStateEntry mechanism.
+    // ReportTypeAdvisor's MANDATORY-unconditional policy means this always
+    // proceeds to AWAITING_REPORT_TYPE_SELECTION regardless of confidence --
+    // no threshold tuning needed for a deterministic outcome, unlike the
+    // AUTO_IF_ABOVE skills above.
+    const queuedSuggestReportType = await prisma.job.findFirstOrThrow({
+      where: { workflowId, jobType: JobType.SUGGEST_REPORT_TYPE },
+      orderBy: { createdAt: "desc" },
+    });
+
+    await processUntilSettled(queuedSuggestReportType.id);
+
+    const completed = await prisma.job.findUniqueOrThrow({ where: { id: queuedSuggestReportType.id } });
+    expect(completed.status).toBe(JobStatus.SUCCEEDED);
+    expect(completed.resultAiOutputId).not.toBeNull();
+
+    const workflow = await prisma.workflow.findUniqueOrThrow({ where: { id: workflowId } });
+    expect(workflow.currentState).toBe(WorkflowState.AWAITING_REPORT_TYPE_SELECTION);
+
+    const suggestion = await prisma.reportTypeSuggestion.findFirstOrThrow({ where: { workflowId } });
+    expect(suggestion.version).toBe(1);
+    expect(suggestion.aiOutputId).toBe(completed.resultAiOutputId);
+  });
+
   it("marks a job FAILED when no runner is registered for its job_type", async () => {
-    // DETECT_CONFLICTS is now registered too (Phase 4) -- SUGGEST_REPORT_TYPE
+    // SUGGEST_REPORT_TYPE is now registered too (Phase 5) -- GENERATE_DRAFT
     // is the next still-unregistered job_type.
     const job = await prisma.job.create({
-      data: { workflowId, jobType: JobType.SUGGEST_REPORT_TYPE, status: JobStatus.QUEUED },
+      data: { workflowId, jobType: JobType.GENERATE_DRAFT, status: JobStatus.QUEUED },
     });
 
     await processUntilSettled(job.id);

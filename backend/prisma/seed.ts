@@ -40,6 +40,19 @@ async function main() {
       confidenceThreshold: 0.7,
     },
   });
+
+  // MANDATORY, unconditionally -- no confidence threshold applies (matches
+  // the architecture doc's policy table's "n/a"). See approval/gateway.ts's
+  // mandatoryReview routing shape for how this always proceeds straight to
+  // AWAITING_REPORT_TYPE_SELECTION regardless of confidence or schema validity.
+  await prisma.approvalPolicy.upsert({
+    where: { skillName: "ReportTypeAdvisor" },
+    update: { policyType: PolicyType.MANDATORY, confidenceThreshold: null },
+    create: {
+      skillName: "ReportTypeAdvisor",
+      policyType: PolicyType.MANDATORY,
+    },
+  });
 }
 
 main()

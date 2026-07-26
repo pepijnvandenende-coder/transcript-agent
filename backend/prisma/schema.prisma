@@ -134,6 +134,7 @@ model Workflow {
   approvalRequests ApprovalRequest[]
   merges           Merge[]
   conflicts        Conflict[]
+  reportTypeSuggestions ReportTypeSuggestion[]
 
   @@map("workflows")
 }
@@ -232,6 +233,7 @@ model AiOutput {
   inputs           AiOutputInput[]
   merges           Merge[]
   conflicts        Conflict[]
+  reportTypeSuggestions ReportTypeSuggestion[]
 
   @@map("ai_outputs")
 }
@@ -349,6 +351,28 @@ model Conflict {
   createdAt    DateTime       @default(now()) @map("created_at")
 
   @@map("conflicts")
+}
+
+// Versioned, insert-only ReportTypeAdvisor output (Phase 5) -- one row per
+// schema-valid run, mirroring Merge. Written by
+// jobs/runners/suggestReportTypeRunner.ts, not the gateway. Never mutated:
+// a corrected/re-run suggestion is a new row, not an overwrite of this one --
+// workflows.report_type (the human's actual choice) is set separately by
+// approval/reportTypeSelection.ts's selectReportType().
+model ReportTypeSuggestion {
+  id            String   @id @default(uuid())
+  workflowId    String   @map("workflow_id")
+  workflow      Workflow @relation(fields: [workflowId], references: [id])
+  version       Int
+  aiOutputId    String   @map("ai_output_id")
+  aiOutput      AiOutput @relation(fields: [aiOutputId], references: [id])
+  suggestedType String   @map("suggested_type")
+  rationale     String
+  runnerUp      String?  @map("runner_up")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@unique([workflowId, version])
+  @@map("report_type_suggestions")
 }
 
 model ApprovalPolicy {

@@ -8,6 +8,7 @@ import { prisma } from "../../src/persistence/prismaClient";
 const SKILL_NAME = "TranscriptQualityChecker";
 const MERGER_SKILL_NAME = "Merger";
 const CONFLICT_DETECTOR_SKILL_NAME = "ConflictDetector";
+const REPORT_TYPE_ADVISOR_SKILL_NAME = "ReportTypeAdvisor";
 
 describe("policyResolver.resolvePolicy", () => {
   beforeAll(async () => {
@@ -34,6 +35,14 @@ describe("policyResolver.resolvePolicy", () => {
         policyType: PolicyType.AUTO_IF_ABOVE,
         confidenceThreshold: 0.7,
         maxRetries: 5,
+      },
+    });
+    await prisma.approvalPolicy.upsert({
+      where: { skillName: REPORT_TYPE_ADVISOR_SKILL_NAME },
+      update: { policyType: PolicyType.MANDATORY, confidenceThreshold: null },
+      create: {
+        skillName: REPORT_TYPE_ADVISOR_SKILL_NAME,
+        policyType: PolicyType.MANDATORY,
       },
     });
   });
@@ -94,6 +103,14 @@ describe("policyResolver.resolvePolicy", () => {
       confidence: 0.5,
     });
     expect(low.outcome).toBe("low_confidence");
+  });
+
+  it("ReportTypeAdvisor's MANDATORY policy returns outcome 'mandatory' unconditionally, regardless of confidence", async () => {
+    const high = await resolvePolicy({ skillName: REPORT_TYPE_ADVISOR_SKILL_NAME, result: {}, confidence: 0.99 });
+    expect(high.outcome).toBe("mandatory");
+
+    const low = await resolvePolicy({ skillName: REPORT_TYPE_ADVISOR_SKILL_NAME, result: {}, confidence: 0.01 });
+    expect(low.outcome).toBe("mandatory");
   });
 });
 

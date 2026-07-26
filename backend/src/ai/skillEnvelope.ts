@@ -59,3 +59,15 @@ export const ConflictDetectorEnvelopeSchema = SkillEnvelopeSchema.extend({
   result: ConflictDetectorResultSchema,
 });
 export type ConflictDetectorEnvelope = z.infer<typeof ConflictDetectorEnvelopeSchema>;
+
+export const ReportTypeResultSchema = z.object({
+  suggested_type: z.string(),
+  rationale: z.string(),
+  runner_up: z.string().optional(),
+});
+export type ReportTypeResult = z.infer<typeof ReportTypeResultSchema>;
+
+export const ReportTypeAdvisorEnvelopeSchema = SkillEnvelopeSchema.extend({
+  result: ReportTypeResultSchema,
+});
+export type ReportTypeAdvisorEnvelope = z.infer<typeof ReportTypeAdvisorEnvelopeSchema>;

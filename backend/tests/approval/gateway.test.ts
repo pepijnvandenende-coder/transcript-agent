@@ -1,7 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { ActorType, JobStatus, JobType, PolicyType, RetryMode } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { ConflictDetectorEnvelope, MergerEnvelope, TranscriptQualityEnvelope } from "../../src/ai/skillEnvelope";
+import type {
+  ConflictDetectorEnvelope,
+  MergerEnvelope,
+  ReportTypeAdvisorEnvelope,
+  TranscriptQualityEnvelope,
+} from "../../src/ai/skillEnvelope";
 import {
   confirmApprovalRequest,
   editRetryApprovalRequest,
@@ -17,6 +22,7 @@ import { WorkflowState } from "../../src/workflow/states";
 const SKILL_NAME = "TranscriptQualityChecker";
 const MERGER_SKILL_NAME = "Merger";
 const CONFLICT_DETECTOR_SKILL_NAME = "ConflictDetector";
+const REPORT_TYPE_ADVISOR_SKILL_NAME = "ReportTypeAdvisor";
 
 function envelope(
   overrides: { confidence?: number; sufficient?: boolean; issues?: string[] } = {},
@@ -61,6 +67,18 @@ function conflictDetectorEnvelope(
   };
 }
 
+function reportTypeAdvisorEnvelope(overrides: { confidence?: number } = {}): ReportTypeAdvisorEnvelope {
+  const { confidence = 0.85 } = overrides;
+  return {
+    skill: REPORT_TYPE_ADVISOR_SKILL_NAME,
+    schema_version: "1.0.0",
+    confidence,
+    rationale: "test envelope",
+    flags: [],
+    result: { suggested_type: "Standard Audit Summary", rationale: "test rationale", runner_up: "Incident Report" },
+  };
+}
+
 describe("approval/gateway", () => {
   let userId: string;
 
@@ -80,6 +98,11 @@ describe("approval/gateway", () => {
       update: { policyType: PolicyType.AUTO_IF_ABOVE, confidenceThreshold: 0.7, maxRetries: 5 },
       create: { skillName: CONFLICT_DETECTOR_SKILL_NAME, policyType: PolicyType.AUTO_IF_ABOVE, confidenceThreshold: 0.7 },
     });
+    await prisma.approvalPolicy.upsert({
+      where: { skillName: REPORT_TYPE_ADVISOR_SKILL_NAME },
+      update: { policyType: PolicyType.MANDATORY, confidenceThreshold: null },
+      create: { skillName: REPORT_TYPE_ADVISOR_SKILL_NAME, policyType: PolicyType.MANDATORY },
+    });
 
     const user = await prisma.user.create({
       data: { name: "Gateway Test User", email: `gateway-test-${randomUUID()}@example.com`, role: "reviewer" },
@@ -96,6 +119,7 @@ describe("approval/gateway", () => {
     await prisma.aiOutputInput.deleteMany({ where: { aiOutput: { workflow: { createdById: userId } } } });
     await prisma.merge.deleteMany({ where: { workflow: { createdById: userId } } });
     await prisma.conflict.deleteMany({ where: { workflow: { createdById: userId } } });
+    await prisma.reportTypeSuggestion.deleteMany({ where: { workflow: { createdById: userId } } });
     await prisma.aiOutput.deleteMany({ where: { workflow: { createdById: userId } } });
     await prisma.transcript.deleteMany({ where: { workflow: { createdById: userId } } });
     await prisma.note.deleteMany({ where: { workflow: { createdById: userId } } });
@@ -404,6 +428,82 @@ describe("approval/gateway", () => {
       await expect(
         editRetryApprovalRequest({ workflowId: workflow.id, actorId: userId, transcriptContent: "anything" }),
       ).rejects.toBeInstanceOf(InvalidRetryInputError);
+    });
+  });
+
+  describe("ReportTypeAdvisor routing (SUGGESTING_REPORT_TYPE -> AWAITING_REPORT_TYPE_SELECTION)", () => {
+    async function workflowAtSuggestingReportType(title: string) {
+      const workflow = await workflowAtValidating(title);
+      await handleSkillOutput({
+        workflowId: workflow.id,
+        envelope: envelope({ confidence: 0.95 }),
+        promptVersion: "stub-1",
+        schemaVersion: "1.0.0",
+      });
+      await handleSkillOutput({
+        workflowId: workflow.id,
+        envelope: mergerEnvelope({ confidence: 0.95 }),
+        promptVersion: "stub-1",
+        schemaVersion: "1.0.0",
+      });
+      await handleSkillOutput({
+        workflowId: workflow.id,
+        envelope: conflictDetectorEnvelope({ confidence: 0.9 }),
+        promptVersion: "stub-1",
+        schemaVersion: "1.0.0",
+      });
+      return prisma.workflow.findUniqueOrThrow({ where: { id: workflow.id } });
+    }
+
+    it("always transitions via report_type_suggested regardless of confidence -- no low/auto split, no auto-approval", async () => {
+      const workflow = await workflowAtSuggestingReportType("Gateway ReportTypeAdvisor Low Confidence Still Proceeds");
+
+      await handleSkillOutput({
+        workflowId: workflow.id,
+        envelope: reportTypeAdvisorEnvelope({ confidence: 0.01 }),
+        promptVersion: "stub-1",
+        schemaVersion: "1.0.0",
+      });
+
+      const reloaded = await prisma.workflow.findUniqueOrThrow({ where: { id: workflow.id } });
+      expect(reloaded.currentState).toBe(WorkflowState.AWAITING_REPORT_TYPE_SELECTION);
+
+      const aiOutput = await prisma.aiOutput.findFirstOrThrow({
+        where: { workflowId: workflow.id, skillName: REPORT_TYPE_ADVISOR_SKILL_NAME },
+      });
+      // Not auto-approved -- the human hasn't made the required explicit
+      // choice yet (see approval/reportTypeSelection.ts).
+      expect(aiOutput.approvalStatus).toBe("PENDING");
+
+      // No generic checkpoint episode -- ReportTypeAdvisor never opens one.
+      const openRequest = await prisma.approvalRequest.findFirst({ where: { aiOutputId: aiOutput.id } });
+      expect(openRequest).toBeNull();
+    });
+
+    it("schema-invalid output ALSO proceeds via report_type_suggested (Key Design Finding) -- no stuck workflow, no approval_requests", async () => {
+      const workflow = await workflowAtSuggestingReportType("Gateway ReportTypeAdvisor Schema Invalid");
+
+      const invalid = { ...reportTypeAdvisorEnvelope(), confidence: -1 };
+
+      await handleSkillOutput({
+        workflowId: workflow.id,
+        envelope: invalid,
+        promptVersion: "stub-1",
+        schemaVersion: "1.0.0",
+      });
+
+      const reloaded = await prisma.workflow.findUniqueOrThrow({ where: { id: workflow.id } });
+      expect(reloaded.currentState).toBe(WorkflowState.AWAITING_REPORT_TYPE_SELECTION);
+
+      const aiOutput = await prisma.aiOutput.findFirstOrThrow({
+        where: { workflowId: workflow.id, skillName: REPORT_TYPE_ADVISOR_SKILL_NAME },
+      });
+      expect(aiOutput.validationStatus).toBe("INVALID");
+      expect(aiOutput.validationErrors).not.toBeNull();
+      expect(aiOutput.approvalStatus).toBe("PENDING");
+
+      const openRequest = await prisma.approvalRequest.findFirst({ where: { aiOutputId: aiOutput.id } });
+      expect(openRequest).toBeNull();
     });
   });
 

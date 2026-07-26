@@ -120,3 +120,18 @@ export class ConflictAlreadyResolvedError extends Error {
     this.name = "ConflictAlreadyResolvedError";
   }
 }
+
+// Phase 5: raised by approval/reportTypeSelection.ts's selectReportType()
+// when the workflow isn't at AWAITING_REPORT_TYPE_SELECTION -- mirrors
+// NotAtConflictReviewError's role for CONFLICTS_PENDING_REVIEW.
+export class NotAwaitingReportTypeSelectionError extends Error {
+  constructor(
+    public readonly workflowId: string,
+    public readonly currentState: WorkflowState,
+  ) {
+    super(
+      `Workflow ${workflowId} is not at AWAITING_REPORT_TYPE_SELECTION (current state: ${currentState}); cannot select a report type`,
+    );
+    this.name = "NotAwaitingReportTypeSelectionError";
+  }
+}

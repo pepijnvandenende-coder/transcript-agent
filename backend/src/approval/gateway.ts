@@ -39,14 +39,26 @@ interface SkillRouting {
     insufficient?: string;
     /** Phase 4: fired on the "requires_review" policy outcome -- see policyResolver.ts. */
     requiresReview?: string;
+    /**
+     * Phase 5: fired for MANDATORY-policy skills whose checkpoint is NOT the
+     * generic PENDING_HUMAN_CONFIRMATION (e.g. ReportTypeAdvisor's
+     * AWAITING_REPORT_TYPE_SELECTION) -- always taken regardless of schema
+     * validity or confidence, since the destination state itself demands an
+     * explicit human choice. When set, this short-circuits ALL other routing
+     * in handleSkillOutput() below (schema-invalid included).
+     */
+    mandatoryReview?: string;
   };
   /** The state a confirm/auto-approve of this skill's output always leads to. */
   nextState: WorkflowState;
   /** This skill's own PROCESSING state -- where retry/edit-retry route back to. */
   originatingState: WorkflowState;
-  confirmAction: string;
-  retryAction: string;
-  editRetryAction: string;
+  // Optional (Phase 5): skills whose events.mandatoryReview is set never open
+  // a PENDING_HUMAN_CONFIRMATION episode, so confirm/retry/edit-retry are
+  // unreachable for them and these fields are never read.
+  confirmAction?: string;
+  retryAction?: string;
+  editRetryAction?: string;
   jobType: JobType;
   inputs: AiOutputInputType[];
 }
@@ -98,6 +110,24 @@ const SKILL_ROUTING: Record<string, SkillRouting> = {
     // version directly -- there's no editable input type for it yet (Phase 4
     // scope decision), so edit-retry against its checkpoint always rejects
     // via InvalidRetryInputError, with no special-casing needed.
+    inputs: [],
+  },
+  ReportTypeAdvisor: {
+    events: {
+      // Unused (mandatoryReview short-circuits before these are ever
+      // consulted) but kept non-empty strings rather than making the whole
+      // `events` shape conditional -- simplest way to satisfy the existing
+      // required fields without a second SkillRouting variant.
+      autoApproved: "report_type_suggested",
+      lowConfidence: "report_type_suggested",
+      schemaInvalid: "report_type_suggested",
+      mandatoryReview: "report_type_suggested",
+    },
+    nextState: WorkflowState.AWAITING_REPORT_TYPE_SELECTION,
+    originatingState: WorkflowState.SUGGESTING_REPORT_TYPE,
+    jobType: JobType.SUGGEST_REPORT_TYPE,
+    // Reads the latest `merges` output, same lineage scope decision Phase 4
+    // made for ConflictDetector -- no new AiOutputInputType.
     inputs: [],
   },
 };
@@ -193,6 +223,24 @@ export async function handleSkillOutput(params: {
       await createAiOutputInputs(aiOutput.id, params.inputs);
     }
 
+    if (routing.events.mandatoryReview) {
+      // Phase 5: MANDATORY-only skills whose checkpoint isn't the generic one
+      // (e.g. ReportTypeAdvisor) proceed straight to that dedicated checkpoint
+      // even on schema-invalid output -- the destination state demands an
+      // explicit human choice regardless, so there is no separate failure
+      // path to route to (see gateway.ts's SkillRouting.events.mandatoryReview
+      // doc comment). validationStatus/validationErrors above still fully
+      // audit the invalid output; no approval_requests episode is opened.
+      const updated = await engine.transition({
+        workflowId: params.workflowId,
+        trigger: { kind: "system_event", event: routing.events.mandatoryReview },
+        actor: { actorType: ActorType.SYSTEM },
+        metadata: { reason: "schema_invalid", aiOutputId: aiOutput.id },
+      });
+      await enqueueForStateEntry(params.workflowId, updated.currentState);
+      return { aiOutputId: aiOutput.id };
+    }
+
     await createApprovalRequest({
       workflowId: params.workflowId,
       aiOutputId: aiOutput.id,
@@ -236,6 +284,23 @@ export async function handleSkillOutput(params: {
   });
   if (params.inputs?.length) {
     await createAiOutputInputs(aiOutput.id, params.inputs);
+  }
+
+  if (routing.events.mandatoryReview) {
+    // Phase 5: always proceeds regardless of confidence or policy outcome --
+    // never auto-approved (a human hasn't made the required explicit choice
+    // yet) and never opens a generic approval_requests episode. This is what
+    // makes SUGGESTING_REPORT_TYPE (and, structurally, any future skill with
+    // the same MANDATORY-unconditional shape) a true mandatory human decision
+    // point rather than an auto-advancing step.
+    const updated = await engine.transition({
+      workflowId: params.workflowId,
+      trigger: { kind: "system_event", event: routing.events.mandatoryReview },
+      actor: { actorType: ActorType.SYSTEM },
+      metadata: { reason: "mandatory_review", aiOutputId: aiOutput.id },
+    });
+    await enqueueForStateEntry(params.workflowId, updated.currentState);
+    return { aiOutputId: aiOutput.id };
   }
 
   if (policyResolution.outcome === "requires_review") {
@@ -357,7 +422,7 @@ export async function confirmApprovalRequest(params: {
 
   const updated = await engine.transition({
     workflowId: params.workflowId,
-    trigger: { kind: "user_action", action: routing.confirmAction },
+    trigger: { kind: "user_action", action: routing.confirmAction! },
     actor: { actorType: ActorType.USER, actorId: params.actorId },
     metadata: { reason: "human_confirmed", aiOutputId: aiOutput.id, approvalRequestId: openRequest.id },
   });
@@ -388,7 +453,7 @@ export async function retryApprovalRequest(params: {
 
   const updated = await engine.transition({
     workflowId: params.workflowId,
-    trigger: { kind: "user_action", action: routing.retryAction },
+    trigger: { kind: "user_action", action: routing.retryAction! },
     actor: { actorType: ActorType.USER, actorId: params.actorId },
     metadata: { reason: "human_retry", aiOutputId: aiOutput.id, approvalRequestId: openRequest.id },
   });
@@ -446,7 +511,7 @@ export async function editRetryApprovalRequest(params: {
 
   const updated = await engine.transition({
     workflowId: params.workflowId,
-    trigger: { kind: "user_action", action: routing.editRetryAction },
+    trigger: { kind: "user_action", action: routing.editRetryAction! },
     actor: { actorType: ActorType.USER, actorId: params.actorId },
     metadata: { reason: "human_edit_retry", aiOutputId: aiOutput.id, approvalRequestId: openRequest.id },
   });

@@ -9,20 +9,22 @@ import {
   NoOpenApprovalRequestError,
   NotAtCheckpointError,
   NotAtConflictReviewError,
+  NotAwaitingReportTypeSelectionError,
 } from "../domain/types";
 import { PathTraversalError } from "../storage/localFilesystemStorage";
 
 // Shared across every router mounted under /workflows -- centralizes the
 // mapping from domain errors to HTTP status codes so each new router
-// (uploads, validation, approval-request, conflicts) doesn't redeclare the
-// same handler.
+// (uploads, validation, approval-request, conflicts, report-type) doesn't
+// redeclare the same handler.
 export function apiErrorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction) {
   if (
     err instanceof InvalidTransitionError ||
     err instanceof NotAtCheckpointError ||
     err instanceof MaxRetriesExceededError ||
     err instanceof NotAtConflictReviewError ||
-    err instanceof ConflictAlreadyResolvedError
+    err instanceof ConflictAlreadyResolvedError ||
+    err instanceof NotAwaitingReportTypeSelectionError
   ) {
     res.status(409).json({ error: err.message });
     return;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import * as conflictDetector from "../../src/ai/skills/conflictDetector";
 import * as merger from "../../src/ai/skills/merger";
+import * as reportTypeAdvisor from "../../src/ai/skills/reportTypeAdvisor";
 import { run } from "../../src/ai/skills/transcriptQualityChecker";
 import { checkSchema } from "../../src/approval/schemaValidator";
 
@@ -52,6 +53,19 @@ describe("schemaValidator.checkSchema", () => {
     const envelope = conflictDetector.run(["a stray note"]);
     const malformed = { ...envelope, result: { conflicts: "not an array" } };
     const result = checkSchema("ConflictDetector", malformed);
+    expect(result.valid).toBe(false);
+  });
+
+  it("accepts a well-formed ReportTypeAdvisor envelope", () => {
+    const envelope = reportTypeAdvisor.run("some merged content");
+    const result = checkSchema("ReportTypeAdvisor", envelope);
+    expect(result.valid).toBe(true);
+  });
+
+  it("rejects a ReportTypeAdvisor envelope missing suggested_type", () => {
+    const envelope = reportTypeAdvisor.run("some merged content");
+    const malformed = { ...envelope, result: { rationale: envelope.result.rationale } };
+    const result = checkSchema("ReportTypeAdvisor", malformed);
     expect(result.valid).toBe(false);
   });
 });

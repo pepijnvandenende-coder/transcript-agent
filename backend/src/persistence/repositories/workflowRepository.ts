@@ -11,3 +11,15 @@ export function listWorkflows(filter?: { status?: WorkflowStatus }) {
     orderBy: { createdAt: "desc" },
   });
 }
+
+// Phase 5: sets the human's actual report-type choice, distinct from
+// report_type_suggestions (the AI's suggestion history). engine.transition()
+// only ever touches currentState/status, so business fields like this are
+// set via their own dedicated repository call -- see
+// approval/reportTypeSelection.ts's selectReportType().
+export function setWorkflowReportType(workflowId: string, reportType: string) {
+  return prisma.workflow.update({
+    where: { id: workflowId },
+    data: { reportType },
+  });
+}

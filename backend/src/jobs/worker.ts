@@ -2,6 +2,7 @@ import { JobType, type RetryMode } from "@prisma/client";
 import { claimNextQueuedJob, markJobFailed, markJobSucceeded } from "../persistence/repositories/jobRepository";
 import { runDetectConflictsJob } from "./runners/conflictDetectionRunner";
 import { runMergeJob } from "./runners/mergeRunner";
+import { runSuggestReportTypeJob } from "./runners/suggestReportTypeRunner";
 import { runValidateTranscriptJob } from "./runners/validateTranscriptRunner";
 
 export interface JobRunnerInput {
@@ -23,6 +24,7 @@ const RUNNERS: Partial<Record<JobType, JobRunner>> = {
   [JobType.VALIDATE_TRANSCRIPT]: runValidateTranscriptJob,
   [JobType.MERGE]: runMergeJob,
   [JobType.DETECT_CONFLICTS]: runDetectConflictsJob,
+  [JobType.SUGGEST_REPORT_TYPE]: runSuggestReportTypeJob,
 };
 
 /**
