@@ -94,6 +94,11 @@ enum AiOutputInputType {
   NOTES
 }
 
+enum ConflictStatus {
+  OPEN
+  RESOLVED
+}
+
 model User {
   id        String   @id @default(uuid())
   name      String
@@ -128,6 +133,7 @@ model Workflow {
   notes            Note[]
   approvalRequests ApprovalRequest[]
   merges           Merge[]
+  conflicts        Conflict[]
 
   @@map("workflows")
 }
@@ -225,6 +231,7 @@ model AiOutput {
   approvalRequests ApprovalRequest[]
   inputs           AiOutputInput[]
   merges           Merge[]
+  conflicts        Conflict[]
 
   @@map("ai_outputs")
 }
@@ -317,6 +324,31 @@ model Merge {
 
   @@unique([workflowId, version])
   @@map("merges")
+}
+
+// Per-conflict rows written by jobs/runners/conflictDetectionRunner.ts when
+// ConflictDetector's semantic hook fires ("conflicts found" -- see
+// approval/policyResolver.ts). Never deleted: a conflict is resolved in
+// place (OPEN -> RESOLVED, with resolution/resolvedBy/resolvedAt) via
+// approval/conflictResolution.ts's explainConflict(), or marked RESOLVED
+// with a "superseded_by_restart" resolution if the workflow restarts upload
+// before every conflict is explained -- full history stays queryable either way.
+model Conflict {
+  id           String         @id @default(uuid())
+  workflowId   String         @map("workflow_id")
+  workflow     Workflow       @relation(fields: [workflowId], references: [id])
+  aiOutputId   String         @map("ai_output_id")
+  aiOutput     AiOutput       @relation(fields: [aiOutputId], references: [id])
+  description  String
+  sourceA      String?        @map("source_a")
+  sourceB      String?        @map("source_b")
+  status       ConflictStatus @default(OPEN)
+  resolution   String?
+  resolvedById String?        @map("resolved_by")
+  resolvedAt   DateTime?      @map("resolved_at")
+  createdAt    DateTime       @default(now()) @map("created_at")
+
+  @@map("conflicts")
 }
 
 model ApprovalPolicy {

@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import { MergerEnvelopeSchema, TranscriptQualityEnvelopeSchema } from "../ai/skillEnvelope";
+import { ConflictDetectorEnvelopeSchema, MergerEnvelopeSchema, TranscriptQualityEnvelopeSchema } from "../ai/skillEnvelope";
 
 export interface SchemaCheckResult {
   valid: boolean;
@@ -12,6 +12,7 @@ export interface SchemaCheckResult {
 const SCHEMAS: Record<string, z.ZodTypeAny> = {
   TranscriptQualityChecker: TranscriptQualityEnvelopeSchema,
   Merger: MergerEnvelopeSchema,
+  ConflictDetector: ConflictDetectorEnvelopeSchema,
 };
 
 export function checkSchema(skillName: string, rawOutput: unknown): SchemaCheckResult {

@@ -84,3 +84,39 @@ export class InvalidRetryInputError extends Error {
     this.name = "InvalidRetryInputError";
   }
 }
+
+// Phase 4: raised by approval/conflictResolution.ts's explainConflict()/
+// restartUpload() when the workflow isn't at CONFLICTS_PENDING_REVIEW --
+// mirrors NotAtCheckpointError's role for the generic checkpoint.
+export class NotAtConflictReviewError extends Error {
+  constructor(
+    public readonly workflowId: string,
+    public readonly currentState: WorkflowState,
+  ) {
+    super(
+      `Workflow ${workflowId} is not at CONFLICTS_PENDING_REVIEW (current state: ${currentState}); cannot review conflicts`,
+    );
+    this.name = "NotAtConflictReviewError";
+  }
+}
+
+// Phase 4: raised when explainConflict() is given a conflictId that doesn't
+// belong to the given workflow (or doesn't exist at all).
+export class ConflictNotFoundError extends Error {
+  constructor(
+    public readonly workflowId: string,
+    public readonly conflictId: string,
+  ) {
+    super(`Conflict ${conflictId} not found for workflow ${workflowId}`);
+    this.name = "ConflictNotFoundError";
+  }
+}
+
+// Phase 4: raised when explainConflict() targets a conflict that's already
+// RESOLVED -- each conflict can only be explained once.
+export class ConflictAlreadyResolvedError extends Error {
+  constructor(public readonly conflictId: string) {
+    super(`Conflict ${conflictId} has already been resolved`);
+    this.name = "ConflictAlreadyResolvedError";
+  }
+}

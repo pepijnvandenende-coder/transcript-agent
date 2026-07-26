@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { ActorType, JobStatus, JobType, PolicyType, RetryMode } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { MergerEnvelope, TranscriptQualityEnvelope } from "../../src/ai/skillEnvelope";
+import type { ConflictDetectorEnvelope, MergerEnvelope, TranscriptQualityEnvelope } from "../../src/ai/skillEnvelope";
 import {
   confirmApprovalRequest,
   editRetryApprovalRequest,
@@ -16,6 +16,7 @@ import { WorkflowState } from "../../src/workflow/states";
 // Requires a real Postgres database -- see docs/phase-1/README.md.
 const SKILL_NAME = "TranscriptQualityChecker";
 const MERGER_SKILL_NAME = "Merger";
+const CONFLICT_DETECTOR_SKILL_NAME = "ConflictDetector";
 
 function envelope(
   overrides: { confidence?: number; sufficient?: boolean; issues?: string[] } = {},
@@ -46,6 +47,20 @@ function mergerEnvelope(overrides: { confidence?: number } = {}): MergerEnvelope
   };
 }
 
+function conflictDetectorEnvelope(
+  overrides: { confidence?: number; conflicts?: Array<{ description: string; source_b?: string }> } = {},
+): ConflictDetectorEnvelope {
+  const { confidence = 0.9, conflicts = [] } = overrides;
+  return {
+    skill: CONFLICT_DETECTOR_SKILL_NAME,
+    schema_version: "1.0.0",
+    confidence,
+    rationale: "test envelope",
+    flags: [],
+    result: { conflicts },
+  };
+}
+
 describe("approval/gateway", () => {
   let userId: string;
 
@@ -59,6 +74,11 @@ describe("approval/gateway", () => {
       where: { skillName: MERGER_SKILL_NAME },
       update: { policyType: PolicyType.AUTO_IF_ABOVE, confidenceThreshold: 0.8, maxRetries: 5 },
       create: { skillName: MERGER_SKILL_NAME, policyType: PolicyType.AUTO_IF_ABOVE, confidenceThreshold: 0.8 },
+    });
+    await prisma.approvalPolicy.upsert({
+      where: { skillName: CONFLICT_DETECTOR_SKILL_NAME },
+      update: { policyType: PolicyType.AUTO_IF_ABOVE, confidenceThreshold: 0.7, maxRetries: 5 },
+      create: { skillName: CONFLICT_DETECTOR_SKILL_NAME, policyType: PolicyType.AUTO_IF_ABOVE, confidenceThreshold: 0.7 },
     });
 
     const user = await prisma.user.create({
@@ -75,6 +95,7 @@ describe("approval/gateway", () => {
     await prisma.job.deleteMany({ where: { workflow: { createdById: userId } } });
     await prisma.aiOutputInput.deleteMany({ where: { aiOutput: { workflow: { createdById: userId } } } });
     await prisma.merge.deleteMany({ where: { workflow: { createdById: userId } } });
+    await prisma.conflict.deleteMany({ where: { workflow: { createdById: userId } } });
     await prisma.aiOutput.deleteMany({ where: { workflow: { createdById: userId } } });
     await prisma.transcript.deleteMany({ where: { workflow: { createdById: userId } } });
     await prisma.note.deleteMany({ where: { workflow: { createdById: userId } } });
@@ -273,6 +294,116 @@ describe("approval/gateway", () => {
 
       const reloaded = await prisma.workflow.findUniqueOrThrow({ where: { id: workflow.id } });
       expect(reloaded.currentState).toBe(WorkflowState.PENDING_HUMAN_CONFIRMATION);
+    });
+  });
+
+  describe("ConflictDetector routing (DETECTING_CONFLICTS -> ...)", () => {
+    async function workflowAtDetectingConflicts(title: string) {
+      const workflow = await workflowAtValidating(title);
+      await handleSkillOutput({
+        workflowId: workflow.id,
+        envelope: envelope({ confidence: 0.95 }),
+        promptVersion: "stub-1",
+        schemaVersion: "1.0.0",
+      });
+      await handleSkillOutput({
+        workflowId: workflow.id,
+        envelope: mergerEnvelope({ confidence: 0.95 }),
+        promptVersion: "stub-1",
+        schemaVersion: "1.0.0",
+      });
+      return prisma.workflow.findUniqueOrThrow({ where: { id: workflow.id } });
+    }
+
+    it("routes conflicts-found straight to CONFLICTS_PENDING_REVIEW without auto-approving or opening a generic approval_requests episode", async () => {
+      const workflow = await workflowAtDetectingConflicts("Gateway ConflictDetector Conflicts Found");
+
+      await handleSkillOutput({
+        workflowId: workflow.id,
+        envelope: conflictDetectorEnvelope({
+          confidence: 0.9,
+          conflicts: [{ description: "a conflict", source_b: "a stray note" }],
+        }),
+        promptVersion: "stub-1",
+        schemaVersion: "1.0.0",
+      });
+
+      const reloaded = await prisma.workflow.findUniqueOrThrow({ where: { id: workflow.id } });
+      expect(reloaded.currentState).toBe(WorkflowState.CONFLICTS_PENDING_REVIEW);
+
+      const aiOutput = await prisma.aiOutput.findFirstOrThrow({
+        where: { workflowId: workflow.id, skillName: CONFLICT_DETECTOR_SKILL_NAME },
+      });
+      // Not auto-approved -- a human hasn't reviewed anything yet.
+      expect(aiOutput.approvalStatus).toBe("PENDING");
+
+      // No generic checkpoint episode -- CONFLICTS_PENDING_REVIEW has its own
+      // explain/restart actions, not confirm/retry/edit-retry.
+      const openRequest = await prisma.approvalRequest.findFirst({ where: { aiOutputId: aiOutput.id } });
+      expect(openRequest).toBeNull();
+    });
+
+    it("auto-approves a no-conflicts, high-confidence ConflictDetector result and advances to SUGGESTING_REPORT_TYPE", async () => {
+      const workflow = await workflowAtDetectingConflicts("Gateway ConflictDetector No Conflicts Auto Approve");
+
+      await handleSkillOutput({
+        workflowId: workflow.id,
+        envelope: conflictDetectorEnvelope({ confidence: 0.9 }),
+        promptVersion: "stub-1",
+        schemaVersion: "1.0.0",
+      });
+
+      const reloaded = await prisma.workflow.findUniqueOrThrow({ where: { id: workflow.id } });
+      expect(reloaded.currentState).toBe(WorkflowState.SUGGESTING_REPORT_TYPE);
+    });
+
+    it("opens the generic PENDING_HUMAN_CONFIRMATION checkpoint on no-conflicts, low-confidence, and confirm advances to SUGGESTING_REPORT_TYPE", async () => {
+      const workflow = await workflowAtDetectingConflicts("Gateway ConflictDetector Low Confidence");
+
+      await handleSkillOutput({
+        workflowId: workflow.id,
+        envelope: conflictDetectorEnvelope({ confidence: 0.3 }),
+        promptVersion: "stub-1",
+        schemaVersion: "1.0.0",
+      });
+
+      let reloaded = await prisma.workflow.findUniqueOrThrow({ where: { id: workflow.id } });
+      expect(reloaded.currentState).toBe(WorkflowState.PENDING_HUMAN_CONFIRMATION);
+
+      // Reuses Phase 3's confirmApprovalRequest with zero code changes.
+      reloaded = await confirmApprovalRequest({ workflowId: workflow.id, actorId: userId });
+      expect(reloaded.currentState).toBe(WorkflowState.SUGGESTING_REPORT_TYPE);
+    });
+
+    it("opens PENDING_HUMAN_CONFIRMATION on schema-invalid ConflictDetector output", async () => {
+      const workflow = await workflowAtDetectingConflicts("Gateway ConflictDetector Schema Invalid");
+
+      const invalid = { ...conflictDetectorEnvelope(), confidence: -1 };
+
+      await handleSkillOutput({
+        workflowId: workflow.id,
+        envelope: invalid,
+        promptVersion: "stub-1",
+        schemaVersion: "1.0.0",
+      });
+
+      const reloaded = await prisma.workflow.findUniqueOrThrow({ where: { id: workflow.id } });
+      expect(reloaded.currentState).toBe(WorkflowState.PENDING_HUMAN_CONFIRMATION);
+    });
+
+    it("edit-retry against a ConflictDetector checkpoint rejects -- it declares no editable inputs", async () => {
+      const workflow = await workflowAtDetectingConflicts("Gateway ConflictDetector Edit Retry Rejected");
+
+      await handleSkillOutput({
+        workflowId: workflow.id,
+        envelope: conflictDetectorEnvelope({ confidence: 0.3 }),
+        promptVersion: "stub-1",
+        schemaVersion: "1.0.0",
+      });
+
+      await expect(
+        editRetryApprovalRequest({ workflowId: workflow.id, actorId: userId, transcriptContent: "anything" }),
+      ).rejects.toBeInstanceOf(InvalidRetryInputError);
     });
   });
 

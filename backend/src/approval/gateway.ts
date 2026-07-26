@@ -37,6 +37,8 @@ interface SkillRouting {
     lowConfidence: string;
     schemaInvalid: string;
     insufficient?: string;
+    /** Phase 4: fired on the "requires_review" policy outcome -- see policyResolver.ts. */
+    requiresReview?: string;
   };
   /** The state a confirm/auto-approve of this skill's output always leads to. */
   nextState: WorkflowState;
@@ -79,6 +81,25 @@ const SKILL_ROUTING: Record<string, SkillRouting> = {
     jobType: JobType.MERGE,
     inputs: [AiOutputInputType.TRANSCRIPT, AiOutputInputType.NOTES],
   },
+  ConflictDetector: {
+    events: {
+      autoApproved: "conflict_detection.none_found_auto_approved",
+      lowConfidence: "conflict_detection.none_found_low_confidence",
+      schemaInvalid: "conflict_detection.schema_invalid",
+      requiresReview: "conflict_detection.conflicts_found",
+    },
+    nextState: WorkflowState.SUGGESTING_REPORT_TYPE,
+    originatingState: WorkflowState.DETECTING_CONFLICTS,
+    confirmAction: "confirm.conflict_detection",
+    retryAction: "retry.conflict_detection",
+    editRetryAction: "edit_retry.conflict_detection",
+    jobType: JobType.DETECT_CONFLICTS,
+    // ConflictDetector reads the latest `merges` output, not a transcript/notes
+    // version directly -- there's no editable input type for it yet (Phase 4
+    // scope decision), so edit-retry against its checkpoint always rejects
+    // via InvalidRetryInputError, with no special-casing needed.
+    inputs: [],
+  },
 };
 
 function routingFor(skillName: string): SkillRouting {
@@ -101,10 +122,15 @@ const JOB_FOR_STATE: Partial<Record<WorkflowState, JobType>> = Object.fromEntrie
  * skill's job the moment its PROCESSING state is entered, whether that
  * happens via auto-approval, a human confirm, or a retry/edit-retry -- there
  * is no separate "start merge"-style endpoint for any state past the first.
- * States with no registered skill (e.g. DETECTING_CONFLICTS, until a later
- * phase adds ConflictDetector) simply no-op here.
+ * States with no registered skill simply no-op here.
+ *
+ * Exported (Phase 4) so human actions that are NOT AI-output-driven -- e.g.
+ * approval/conflictResolution.ts's explainConflict(), which transitions
+ * CONFLICTS_PENDING_REVIEW -> MERGING directly via engine.transition() --
+ * can still restart the next skill's job on entry, through this same single
+ * choke point, rather than duplicating the auto-enqueue logic.
  */
-async function enqueueForStateEntry(
+export async function enqueueForStateEntry(
   workflowId: string,
   state: WorkflowState,
   retryContext?: { retryOfAiOutputId: string; retryMode: RetryMode },
@@ -210,6 +236,26 @@ export async function handleSkillOutput(params: {
   });
   if (params.inputs?.length) {
     await createAiOutputInputs(aiOutput.id, params.inputs);
+  }
+
+  if (policyResolution.outcome === "requires_review") {
+    // Mandatory human checkpoint (e.g. CONFLICTS_PENDING_REVIEW) -- unlike
+    // "insufficient" below, this does NOT auto-approve (a human hasn't
+    // reviewed anything yet) and does NOT open a generic approval_requests
+    // episode, since PENDING_HUMAN_CONFIRMATION's confirm/retry/edit-retry
+    // semantics don't apply to this checkpoint. approvalStatus stays PENDING
+    // until whatever skill-specific review flow resolves it (e.g.
+    // approval/conflictResolution.ts marks it HUMAN_APPROVED once every
+    // conflict is explained). The caller (e.g. conflictDetectionRunner.ts) is
+    // responsible for writing whatever skill-specific rows back this review.
+    const updated = await engine.transition({
+      workflowId: params.workflowId,
+      trigger: { kind: "system_event", event: routing.events.requiresReview! },
+      actor: { actorType: ActorType.SYSTEM },
+      metadata: { reason: "requires_review", aiOutputId: aiOutput.id },
+    });
+    await enqueueForStateEntry(params.workflowId, updated.currentState);
+    return { aiOutputId: aiOutput.id };
   }
 
   if (policyResolution.outcome === "insufficient") {

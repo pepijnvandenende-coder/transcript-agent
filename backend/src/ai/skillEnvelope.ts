@@ -42,3 +42,20 @@ export const MergerEnvelopeSchema = SkillEnvelopeSchema.extend({
   result: MergerResultSchema,
 });
 export type MergerEnvelope = z.infer<typeof MergerEnvelopeSchema>;
+
+export const ConflictSchema = z.object({
+  description: z.string(),
+  source_a: z.string().optional(),
+  source_b: z.string().optional(),
+});
+export type Conflict = z.infer<typeof ConflictSchema>;
+
+export const ConflictDetectorResultSchema = z.object({
+  conflicts: z.array(ConflictSchema),
+});
+export type ConflictDetectorResult = z.infer<typeof ConflictDetectorResultSchema>;
+
+export const ConflictDetectorEnvelopeSchema = SkillEnvelopeSchema.extend({
+  result: ConflictDetectorResultSchema,
+});
+export type ConflictDetectorEnvelope = z.infer<typeof ConflictDetectorEnvelopeSchema>;

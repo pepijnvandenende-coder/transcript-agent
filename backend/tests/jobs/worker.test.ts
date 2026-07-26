@@ -16,6 +16,7 @@ import { WorkflowState } from "../../src/workflow/states";
 // Requires a real Postgres database -- see docs/phase-1/README.md.
 const SKILL_NAME = "TranscriptQualityChecker";
 const MERGER_SKILL_NAME = "Merger";
+const CONFLICT_DETECTOR_SKILL_NAME = "ConflictDetector";
 
 // claimNextQueuedJob() claims the globally oldest QUEUED job across every
 // workflow, not just this test's own -- and other test files (e.g.
@@ -55,6 +56,11 @@ describe("jobs: queue + processNextJob (no daemon required)", () => {
       update: { policyType: PolicyType.AUTO_IF_ABOVE, confidenceThreshold: 0.8 },
       create: { skillName: MERGER_SKILL_NAME, policyType: PolicyType.AUTO_IF_ABOVE, confidenceThreshold: 0.8 },
     });
+    await prisma.approvalPolicy.upsert({
+      where: { skillName: CONFLICT_DETECTOR_SKILL_NAME },
+      update: { policyType: PolicyType.AUTO_IF_ABOVE, confidenceThreshold: 0.7 },
+      create: { skillName: CONFLICT_DETECTOR_SKILL_NAME, policyType: PolicyType.AUTO_IF_ABOVE, confidenceThreshold: 0.7 },
+    });
 
     const user = await prisma.user.create({
       data: { name: "Worker Test User", email: `worker-test-${randomUUID()}@example.com`, role: "reviewer" },
@@ -85,6 +91,7 @@ describe("jobs: queue + processNextJob (no daemon required)", () => {
     await prisma.job.updateMany({ where: { workflowId }, data: { resultAiOutputId: null, retryOfAiOutputId: null } });
     await prisma.merge.deleteMany({ where: { workflowId } });
     await prisma.aiOutputInput.deleteMany({ where: { aiOutput: { workflowId } } });
+    await prisma.conflict.deleteMany({ where: { workflowId } });
     await prisma.aiOutput.deleteMany({ where: { workflowId } });
     await prisma.job.deleteMany({ where: { workflowId } });
     await prisma.transcript.deleteMany({ where: { workflowId } });
@@ -139,11 +146,32 @@ describe("jobs: queue + processNextJob (no daemon required)", () => {
     expect(merge.aiOutputId).toBe(completed.resultAiOutputId);
   });
 
+  it("auto-approving MERGE auto-enqueued a DETECT_CONFLICTS job, which processNextJob also completes (no conflicts -- Merger's stub never produces unmatched notes)", async () => {
+    // Continues from the previous test: entering DETECTING_CONFLICTS
+    // auto-enqueued this job via the same enqueueForStateEntry mechanism.
+    const queuedDetectConflicts = await prisma.job.findFirstOrThrow({
+      where: { workflowId, jobType: JobType.DETECT_CONFLICTS },
+      orderBy: { createdAt: "desc" },
+    });
+
+    await processUntilSettled(queuedDetectConflicts.id);
+
+    const completed = await prisma.job.findUniqueOrThrow({ where: { id: queuedDetectConflicts.id } });
+    expect(completed.status).toBe(JobStatus.SUCCEEDED);
+    expect(completed.resultAiOutputId).not.toBeNull();
+
+    const workflow = await prisma.workflow.findUniqueOrThrow({ where: { id: workflowId } });
+    expect(workflow.currentState).toBe(WorkflowState.SUGGESTING_REPORT_TYPE);
+
+    const conflictCount = await prisma.conflict.count({ where: { workflowId } });
+    expect(conflictCount).toBe(0);
+  });
+
   it("marks a job FAILED when no runner is registered for its job_type", async () => {
-    // DETECT_CONFLICTS has no registered runner yet (Phase 4) -- MERGE itself
-    // is now registered, so this must use a still-unregistered job_type.
+    // DETECT_CONFLICTS is now registered too (Phase 4) -- SUGGEST_REPORT_TYPE
+    // is the next still-unregistered job_type.
     const job = await prisma.job.create({
-      data: { workflowId, jobType: JobType.DETECT_CONFLICTS, status: JobStatus.QUEUED },
+      data: { workflowId, jobType: JobType.SUGGEST_REPORT_TYPE, status: JobStatus.QUEUED },
     });
 
     await processUntilSettled(job.id);

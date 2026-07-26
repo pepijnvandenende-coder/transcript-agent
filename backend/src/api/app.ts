@@ -1,5 +1,6 @@
 import express from "express";
 import { approvalRequestRouter } from "./approvalRequest.routes";
+import { conflictsRouter } from "./conflicts.routes";
 import { uploadsRouter } from "./uploads.routes";
 import { validationRouter } from "./validation.routes";
 import { workflowsRouter } from "./workflows.routes";
@@ -11,5 +12,6 @@ export function createApp() {
   app.use("/workflows", uploadsRouter);
   app.use("/workflows", validationRouter);
   app.use("/workflows", approvalRequestRouter);
+  app.use("/workflows", conflictsRouter);
   return app;
 }

@@ -26,6 +26,20 @@ async function main() {
       confidenceThreshold: 0.8,
     },
   });
+
+  // "MANDATORY if conflicts found" is enforced by ConflictDetector's semantic
+  // hook in approval/policyResolver.ts, not by policyType -- this row governs
+  // only the "no conflicts found" branch, mirroring how TranscriptQualityChecker's
+  // `sufficient` hook already overrides its own AUTO_IF_ABOVE row today.
+  await prisma.approvalPolicy.upsert({
+    where: { skillName: "ConflictDetector" },
+    update: { policyType: PolicyType.AUTO_IF_ABOVE, confidenceThreshold: 0.7 },
+    create: {
+      skillName: "ConflictDetector",
+      policyType: PolicyType.AUTO_IF_ABOVE,
+      confidenceThreshold: 0.7,
+    },
+  });
 }
 
 main()

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import * as conflictDetector from "../../src/ai/skills/conflictDetector";
 import * as merger from "../../src/ai/skills/merger";
 import { run } from "../../src/ai/skills/transcriptQualityChecker";
 import { checkSchema } from "../../src/approval/schemaValidator";
@@ -38,6 +39,19 @@ describe("schemaValidator.checkSchema", () => {
     const envelope = merger.run("some transcript content", "some notes");
     const malformed = { ...envelope, result: { ...envelope.result, merged_sections: [{ heading: "x" }] } };
     const result = checkSchema("Merger", malformed);
+    expect(result.valid).toBe(false);
+  });
+
+  it("accepts a well-formed ConflictDetector envelope", () => {
+    const envelope = conflictDetector.run(["a stray note"]);
+    const result = checkSchema("ConflictDetector", envelope);
+    expect(result.valid).toBe(true);
+  });
+
+  it("rejects a ConflictDetector envelope with a non-array conflicts field", () => {
+    const envelope = conflictDetector.run(["a stray note"]);
+    const malformed = { ...envelope, result: { conflicts: "not an array" } };
+    const result = checkSchema("ConflictDetector", malformed);
     expect(result.valid).toBe(false);
   });
 });

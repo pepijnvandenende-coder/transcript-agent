@@ -1,7 +1,14 @@
 import { PolicyType } from "@prisma/client";
 import { prisma } from "../persistence/prismaClient";
 
-export type PolicyOutcome = "insufficient" | "auto_approved" | "low_confidence" | "mandatory";
+// "requires_review" (Phase 4) is distinct from "insufficient" (Phase 2):
+// both are semantic-hook-triggered short-circuits that bypass confidence
+// scoring entirely, but "insufficient" routes to an auto-approved, no-human-
+// needed state (e.g. TRANSCRIPT_INSUFFICIENT), while "requires_review" routes
+// to a MANDATORY human checkpoint (e.g. CONFLICTS_PENDING_REVIEW) -- see
+// approval/gateway.ts's handleSkillOutput(), which must NOT auto-approve the
+// latter.
+export type PolicyOutcome = "insufficient" | "auto_approved" | "low_confidence" | "mandatory" | "requires_review";
 
 export interface PolicyResolution {
   policyType: PolicyType;
@@ -11,12 +18,18 @@ export interface PolicyResolution {
 // Per-skill semantic hooks: some skills' result payload changes routing
 // independent of confidence -- e.g. TranscriptQualityChecker's
 // result.sufficient short-circuits straight to TRANSCRIPT_INSUFFICIENT
-// regardless of how confident the assessment was. Phase 2 locked decision:
-// this hook is added now (rather than kept fully generic) as the template
-// later skills' own semantic branches (e.g. ConflictDetector's "conflicts
-// found") will reuse.
-const SEMANTIC_HOOKS: Record<string, (result: Record<string, unknown>) => boolean> = {
-  TranscriptQualityChecker: (result) => result.sufficient === false,
+// regardless of how confident the assessment was, and (Phase 4)
+// ConflictDetector's result.conflicts short-circuits straight to
+// CONFLICTS_PENDING_REVIEW regardless of confidence. Each hook returns the
+// specific outcome it triggers (or null to fall through to normal
+// confidence-based scoring) rather than a bare boolean, since different
+// skills' semantic branches can mean different things (auto vs. mandatory).
+const SEMANTIC_HOOKS: Record<string, (result: Record<string, unknown>) => PolicyOutcome | null> = {
+  TranscriptQualityChecker: (result) => (result.sufficient === false ? "insufficient" : null),
+  ConflictDetector: (result) => {
+    const conflicts = result.conflicts;
+    return Array.isArray(conflicts) && conflicts.length > 0 ? "requires_review" : null;
+  },
 };
 
 export async function resolvePolicy(params: {
@@ -29,9 +42,9 @@ export async function resolvePolicy(params: {
     throw new Error(`No approval_policies row configured for skill "${params.skillName}"`);
   }
 
-  const hook = SEMANTIC_HOOKS[params.skillName];
-  if (hook?.(params.result)) {
-    return { policyType: policy.policyType, outcome: "insufficient" };
+  const hookOutcome = SEMANTIC_HOOKS[params.skillName]?.(params.result);
+  if (hookOutcome) {
+    return { policyType: policy.policyType, outcome: hookOutcome };
   }
 
   if (policy.policyType === PolicyType.MANDATORY) {

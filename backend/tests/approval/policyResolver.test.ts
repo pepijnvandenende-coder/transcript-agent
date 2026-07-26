@@ -7,6 +7,7 @@ import { prisma } from "../../src/persistence/prismaClient";
 // non-workflow-scoped table) -- see docs/phase-1/README.md for DB setup.
 const SKILL_NAME = "TranscriptQualityChecker";
 const MERGER_SKILL_NAME = "Merger";
+const CONFLICT_DETECTOR_SKILL_NAME = "ConflictDetector";
 
 describe("policyResolver.resolvePolicy", () => {
   beforeAll(async () => {
@@ -22,6 +23,16 @@ describe("policyResolver.resolvePolicy", () => {
         skillName: MERGER_SKILL_NAME,
         policyType: PolicyType.AUTO_IF_ABOVE,
         confidenceThreshold: 0.8,
+        maxRetries: 5,
+      },
+    });
+    await prisma.approvalPolicy.upsert({
+      where: { skillName: CONFLICT_DETECTOR_SKILL_NAME },
+      update: { policyType: PolicyType.AUTO_IF_ABOVE, confidenceThreshold: 0.7, maxRetries: 5 },
+      create: {
+        skillName: CONFLICT_DETECTOR_SKILL_NAME,
+        policyType: PolicyType.AUTO_IF_ABOVE,
+        confidenceThreshold: 0.7,
         maxRetries: 5,
       },
     });
@@ -57,6 +68,31 @@ describe("policyResolver.resolvePolicy", () => {
     expect(auto.outcome).toBe("auto_approved");
 
     const low = await resolvePolicy({ skillName: MERGER_SKILL_NAME, result: {}, confidence: 0.5 });
+    expect(low.outcome).toBe("low_confidence");
+  });
+
+  it("ConflictDetector's semantic hook returns requires_review when conflicts are present, regardless of confidence", async () => {
+    const resolution = await resolvePolicy({
+      skillName: CONFLICT_DETECTOR_SKILL_NAME,
+      result: { conflicts: [{ description: "x" }] },
+      confidence: 0.99,
+    });
+    expect(resolution.outcome).toBe("requires_review");
+  });
+
+  it("ConflictDetector falls through to normal confidence scoring when there are no conflicts", async () => {
+    const auto = await resolvePolicy({
+      skillName: CONFLICT_DETECTOR_SKILL_NAME,
+      result: { conflicts: [] },
+      confidence: 0.85,
+    });
+    expect(auto.outcome).toBe("auto_approved");
+
+    const low = await resolvePolicy({
+      skillName: CONFLICT_DETECTOR_SKILL_NAME,
+      result: { conflicts: [] },
+      confidence: 0.5,
+    });
     expect(low.outcome).toBe("low_confidence");
   });
 });
