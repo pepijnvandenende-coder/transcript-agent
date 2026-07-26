@@ -111,6 +111,7 @@ model User {
   approvedAiOutputs AiOutput[]
   uploadedTranscripts Transcript[]
   uploadedNotes       Note[]
+  reviewFeedback      ReviewFeedback[]
 
   @@map("users")
 }
@@ -136,6 +137,8 @@ model Workflow {
   conflicts        Conflict[]
   reportTypeSuggestions ReportTypeSuggestion[]
   drafts                Draft[]
+  draftPrechecks        DraftPrecheck[]
+  reviewFeedback        ReviewFeedback[]
 
   @@map("workflows")
 }
@@ -236,6 +239,7 @@ model AiOutput {
   conflicts        Conflict[]
   reportTypeSuggestions ReportTypeSuggestion[]
   drafts                Draft[]
+  draftPrechecks        DraftPrecheck[]
 
   @@map("ai_outputs")
 }
@@ -420,8 +424,54 @@ model Draft {
   coverage     Float?
   createdAt    DateTime @default(now()) @map("created_at")
 
+  draftPrechecks DraftPrecheck[]
+  reviewFeedback ReviewFeedback[]
+
   @@unique([workflowId, version])
   @@map("drafts")
+}
+
+// One row per DraftQualityPrecheck run (Phase 7), referencing the Draft
+// version it annotates. A separate table rather than new columns on Draft
+// itself, since Draft is insert-only/never-mutated (see Draft's own comment)
+// -- a precheck is metadata *about* a draft, written by a different skill,
+// not a new draft content version. Written by
+// jobs/runners/draftQualityPrecheckRunner.ts, not the gateway.
+model DraftPrecheck {
+  id             String   @id @default(uuid())
+  workflowId     String   @map("workflow_id")
+  workflow       Workflow @relation(fields: [workflowId], references: [id])
+  draftId        String   @map("draft_id")
+  draft          Draft    @relation(fields: [draftId], references: [id])
+  aiOutputId     String   @map("ai_output_id")
+  aiOutput       AiOutput @relation(fields: [aiOutputId], references: [id])
+  overallScore   Float    @map("overall_score")
+  checklist      Json
+  blockingIssues Json     @map("blocking_issues")
+  recommendation String
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@map("draft_prechecks")
+}
+
+// The human's request_draft_changes feedback (Phase 7), one row per
+// submission at DRAFT_PENDING_REVIEW -- becomes DraftReviser's (Phase 8)
+// input. Never mutated. Written by approval/draftReview.ts's
+// requestDraftChanges(), tied to the exact Draft version the feedback is
+// about (a future revision loop produces new Draft versions, so feedback
+// must stay pinned to what it was actually written against).
+model ReviewFeedback {
+  id          String   @id @default(uuid())
+  workflowId  String   @map("workflow_id")
+  workflow    Workflow @relation(fields: [workflowId], references: [id])
+  draftId     String   @map("draft_id")
+  draft       Draft    @relation(fields: [draftId], references: [id])
+  feedback    String
+  createdById String   @map("created_by")
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("review_feedback")
 }
 
 model ApprovalPolicy {

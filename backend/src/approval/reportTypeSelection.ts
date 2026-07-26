@@ -12,7 +12,7 @@ const REPORT_TYPE_ADVISOR_SKILL_NAME = "ReportTypeAdvisor";
 /**
  * AWAITING_REPORT_TYPE_SELECTION's own human action -- a distinct sub-domain
  * from the generic PENDING_HUMAN_CONFIRMATION checkpoint (ReportTypeAdvisor
- * never opens one; see gateway.ts's mandatoryReview shape), but still routes
+ * never opens one; see gateway.ts's bypassEvent shape), but still routes
  * through gateway.ts's enqueueForStateEntry() so landing on GENERATING_DRAFT
  * auto-starts DraftGenerator's job.
  *

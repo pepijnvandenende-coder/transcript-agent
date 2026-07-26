@@ -2,6 +2,7 @@ import type { z } from "zod";
 import {
   ConflictDetectorEnvelopeSchema,
   DraftGeneratorEnvelopeSchema,
+  DraftQualityPrecheckEnvelopeSchema,
   MergerEnvelopeSchema,
   ReportTypeAdvisorEnvelopeSchema,
   TranscriptQualityEnvelopeSchema,
@@ -21,6 +22,7 @@ const SCHEMAS: Record<string, z.ZodTypeAny> = {
   ConflictDetector: ConflictDetectorEnvelopeSchema,
   ReportTypeAdvisor: ReportTypeAdvisorEnvelopeSchema,
   DraftGenerator: DraftGeneratorEnvelopeSchema,
+  DraftQualityPrecheck: DraftQualityPrecheckEnvelopeSchema,
 };
 
 export function checkSchema(skillName: string, rawOutput: unknown): SchemaCheckResult {

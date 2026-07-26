@@ -40,21 +40,28 @@ interface SkillRouting {
     /** Phase 4: fired on the "requires_review" policy outcome -- see policyResolver.ts. */
     requiresReview?: string;
     /**
-     * Phase 5: fired for MANDATORY-policy skills whose checkpoint is NOT the
-     * generic PENDING_HUMAN_CONFIRMATION (e.g. ReportTypeAdvisor's
-     * AWAITING_REPORT_TYPE_SELECTION) -- always taken regardless of schema
-     * validity or confidence, since the destination state itself demands an
-     * explicit human choice. When set, this short-circuits ALL other routing
-     * in handleSkillOutput() below (schema-invalid included).
+     * Phase 5/7: fired for skills whose PROCESSING state has no
+     * PENDING_HUMAN_CONFIRMATION edge to fall back to on schema-invalid
+     * output (e.g. ReportTypeAdvisor's AWAITING_REPORT_TYPE_SELECTION,
+     * DraftQualityPrecheck's DRAFT_PENDING_REVIEW) -- fired unconditionally
+     * on schema-invalid (there's nowhere else for it to go), and ALSO fired
+     * on schema-valid output whenever `policyResolution.outcome` isn't
+     * `"auto_approved"` (see handleSkillOutput() below). For MANDATORY-policy
+     * skills, outcome is always `"mandatory"`, so this always fires and the
+     * output stays PENDING (a human hasn't made the required explicit choice
+     * yet). For ADVISORY_ONLY skills (outcome is always `"auto_approved"`),
+     * this condition is never met on the valid path -- they fall through to
+     * the normal auto_approved handling instead, which is what "never gates"
+     * actually means for them.
      */
-    mandatoryReview?: string;
+    bypassEvent?: string;
   };
   /** The state a confirm/auto-approve of this skill's output always leads to. */
   nextState: WorkflowState;
   /** This skill's own PROCESSING state -- where retry/edit-retry route back to. */
   originatingState: WorkflowState;
-  // Optional (Phase 5): skills whose events.mandatoryReview is set never open
-  // a PENDING_HUMAN_CONFIRMATION episode, so confirm/retry/edit-retry are
+  // Optional (Phase 5): skills whose events.bypassEvent is set never open a
+  // PENDING_HUMAN_CONFIRMATION episode, so confirm/retry/edit-retry are
   // unreachable for them and these fields are never read.
   confirmAction?: string;
   retryAction?: string;
@@ -114,14 +121,15 @@ const SKILL_ROUTING: Record<string, SkillRouting> = {
   },
   ReportTypeAdvisor: {
     events: {
-      // Unused (mandatoryReview short-circuits before these are ever
-      // consulted) but kept non-empty strings rather than making the whole
-      // `events` shape conditional -- simplest way to satisfy the existing
-      // required fields without a second SkillRouting variant.
+      // Unused (bypassEvent fires first -- outcome is always "mandatory" for
+      // this MANDATORY-policy skill) but kept non-empty strings rather than
+      // making the whole `events` shape conditional -- simplest way to
+      // satisfy the existing required fields without a second SkillRouting
+      // variant.
       autoApproved: "report_type_suggested",
       lowConfidence: "report_type_suggested",
       schemaInvalid: "report_type_suggested",
-      mandatoryReview: "report_type_suggested",
+      bypassEvent: "report_type_suggested",
     },
     nextState: WorkflowState.AWAITING_REPORT_TYPE_SELECTION,
     originatingState: WorkflowState.SUGGESTING_REPORT_TYPE,
@@ -132,18 +140,41 @@ const SKILL_ROUTING: Record<string, SkillRouting> = {
   },
   DraftGenerator: {
     events: {
-      // Unused (mandatoryReview short-circuits first) -- same placeholder
-      // pattern as ReportTypeAdvisor's entry above.
+      // Unused (bypassEvent fires first -- same reasoning as ReportTypeAdvisor
+      // above) -- same placeholder pattern.
       autoApproved: "draft_generated",
       lowConfidence: "draft_generated",
       schemaInvalid: "draft_generated",
-      mandatoryReview: "draft_generated",
+      bypassEvent: "draft_generated",
     },
     nextState: WorkflowState.DRAFT_QUALITY_PRECHECK,
     originatingState: WorkflowState.GENERATING_DRAFT,
     jobType: JobType.GENERATE_DRAFT,
     // Reads the latest `merges` output, same lineage scope decision as
     // ConflictDetector/ReportTypeAdvisor -- no new AiOutputInputType.
+    inputs: [],
+  },
+  DraftQualityPrecheck: {
+    events: {
+      // ADVISORY_ONLY -- policyResolver.ts resolves this skill's outcome to
+      // "auto_approved" unconditionally, so autoApproved is the event that
+      // actually fires on the valid path (see handleSkillOutput()'s
+      // bypassEvent condition below). lowConfidence/schemaInvalid are unused
+      // placeholders, same pattern as ReportTypeAdvisor/DraftGenerator above.
+      autoApproved: "precheck_completed",
+      lowConfidence: "precheck_completed",
+      schemaInvalid: "precheck_completed",
+      // Used on the schema-invalid path only (there's no
+      // PENDING_HUMAN_CONFIRMATION edge for DRAFT_QUALITY_PRECHECK to fall
+      // back to) -- never used on the valid path, since this skill's outcome
+      // is always "auto_approved".
+      bypassEvent: "precheck_completed",
+    },
+    nextState: WorkflowState.DRAFT_PENDING_REVIEW,
+    originatingState: WorkflowState.DRAFT_QUALITY_PRECHECK,
+    jobType: JobType.DRAFT_QUALITY_PRECHECK,
+    // Reads the latest `drafts` output, same lineage scope decision as
+    // ConflictDetector/ReportTypeAdvisor/DraftGenerator -- no new AiOutputInputType.
     inputs: [],
   },
 };
@@ -250,17 +281,17 @@ export async function handleSkillOutput(params: {
       await createAiOutputInputs(aiOutput.id, params.inputs);
     }
 
-    if (routing.events.mandatoryReview) {
-      // Phase 5: MANDATORY-only skills whose checkpoint isn't the generic one
-      // (e.g. ReportTypeAdvisor) proceed straight to that dedicated checkpoint
-      // even on schema-invalid output -- the destination state demands an
-      // explicit human choice regardless, so there is no separate failure
-      // path to route to (see gateway.ts's SkillRouting.events.mandatoryReview
-      // doc comment). validationStatus/validationErrors above still fully
-      // audit the invalid output; no approval_requests episode is opened.
+    if (routing.events.bypassEvent) {
+      // Phase 5/7: skills whose checkpoint isn't the generic one (e.g.
+      // ReportTypeAdvisor, DraftQualityPrecheck) proceed straight to their
+      // dedicated next state even on schema-invalid output -- there is no
+      // PENDING_HUMAN_CONFIRMATION edge for these states to route a failure
+      // to (see gateway.ts's SkillRouting.events.bypassEvent doc comment).
+      // validationStatus/validationErrors above still fully audit the
+      // invalid output; no approval_requests episode is opened.
       const updated = await engine.transition({
         workflowId: params.workflowId,
-        trigger: { kind: "system_event", event: routing.events.mandatoryReview },
+        trigger: { kind: "system_event", event: routing.events.bypassEvent },
         actor: { actorType: ActorType.SYSTEM },
         metadata: { reason: "schema_invalid", aiOutputId: aiOutput.id },
       });
@@ -313,18 +344,23 @@ export async function handleSkillOutput(params: {
     await createAiOutputInputs(aiOutput.id, params.inputs);
   }
 
-  if (routing.events.mandatoryReview) {
-    // Phase 5: always proceeds regardless of confidence or policy outcome --
-    // never auto-approved (a human hasn't made the required explicit choice
-    // yet) and never opens a generic approval_requests episode. This is what
-    // makes SUGGESTING_REPORT_TYPE (and, structurally, any future skill with
-    // the same MANDATORY-unconditional shape) a true mandatory human decision
-    // point rather than an auto-advancing step.
+  if (routing.events.bypassEvent && policyResolution.outcome !== "auto_approved") {
+    // Phase 5/7: proceeds regardless of confidence or policy outcome, EXCEPT
+    // when the outcome is "auto_approved" -- that case is left to the normal
+    // auto_approved branch below, which is what lets an ADVISORY_ONLY skill
+    // (e.g. DraftQualityPrecheck, whose outcome is always "auto_approved")
+    // genuinely auto-approve instead of being forced through this
+    // unconditional path meant for MANDATORY skills like ReportTypeAdvisor/
+    // DraftGenerator (whose outcome is always "mandatory", so this condition
+    // is always true for them: never auto-approved, since a human hasn't made
+    // the required explicit choice yet, and never a generic approval_requests
+    // episode). This is what makes their destination state a true mandatory
+    // human decision point rather than an auto-advancing step.
     const updated = await engine.transition({
       workflowId: params.workflowId,
-      trigger: { kind: "system_event", event: routing.events.mandatoryReview },
+      trigger: { kind: "system_event", event: routing.events.bypassEvent },
       actor: { actorType: ActorType.SYSTEM },
-      metadata: { reason: "mandatory_review", aiOutputId: aiOutput.id },
+      metadata: { reason: "bypass", aiOutputId: aiOutput.id },
     });
     await enqueueForStateEntry(params.workflowId, updated.currentState);
     return { aiOutputId: aiOutput.id };

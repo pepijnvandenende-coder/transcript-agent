@@ -3,12 +3,14 @@ import { z } from "zod";
 import {
   ConflictAlreadyResolvedError,
   ConflictNotFoundError,
+  DraftVersionMismatchError,
   InvalidRetryInputError,
   InvalidTransitionError,
   MaxRetriesExceededError,
   NoOpenApprovalRequestError,
   NotAtCheckpointError,
   NotAtConflictReviewError,
+  NotAtDraftReviewError,
   NotAwaitingReportTypeSelectionError,
   UnknownReportTypeError,
 } from "../domain/types";
@@ -25,7 +27,9 @@ export function apiErrorHandler(err: unknown, _req: Request, res: Response, _nex
     err instanceof MaxRetriesExceededError ||
     err instanceof NotAtConflictReviewError ||
     err instanceof ConflictAlreadyResolvedError ||
-    err instanceof NotAwaitingReportTypeSelectionError
+    err instanceof NotAwaitingReportTypeSelectionError ||
+    err instanceof NotAtDraftReviewError ||
+    err instanceof DraftVersionMismatchError
   ) {
     res.status(409).json({ error: err.message });
     return;

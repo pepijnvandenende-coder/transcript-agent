@@ -146,3 +146,34 @@ export class UnknownReportTypeError extends Error {
     this.name = "UnknownReportTypeError";
   }
 }
+
+// Phase 7: raised by approval/draftReview.ts's approveDraft()/
+// requestDraftChanges() when the workflow isn't at DRAFT_PENDING_REVIEW --
+// mirrors NotAtConflictReviewError's role for CONFLICTS_PENDING_REVIEW.
+export class NotAtDraftReviewError extends Error {
+  constructor(
+    public readonly workflowId: string,
+    public readonly currentState: WorkflowState,
+  ) {
+    super(
+      `Workflow ${workflowId} is not at DRAFT_PENDING_REVIEW (current state: ${currentState}); cannot review the draft`,
+    );
+    this.name = "NotAtDraftReviewError";
+  }
+}
+
+// Phase 7: raised when a POST /workflows/:id/drafts/:version/review targets a
+// version that isn't the workflow's current latest draft -- only the latest
+// draft is actionable at DRAFT_PENDING_REVIEW.
+export class DraftVersionMismatchError extends Error {
+  constructor(
+    public readonly workflowId: string,
+    public readonly requestedVersion: number,
+    public readonly latestVersion: number | null,
+  ) {
+    super(
+      `Workflow ${workflowId}'s latest draft is version ${latestVersion ?? "none"}, not ${requestedVersion}; cannot review a stale or unknown version`,
+    );
+    this.name = "DraftVersionMismatchError";
+  }
+}

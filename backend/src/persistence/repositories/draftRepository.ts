@@ -36,11 +36,28 @@ export async function createDraftVersion(params: {
   });
 }
 
-// Unused until Phase 7 (DraftQualityPrecheck reads the draft), added now so
-// the repository shape doesn't need to change alongside that phase.
+// Read by draftQualityPrecheckRunner.ts (Phase 7) and approval/draftReview.ts
+// -- the checkpoint always acts on whichever draft is currently latest.
 export function findLatestDraft(workflowId: string) {
   return prisma.draft.findFirst({
     where: { workflowId },
     orderBy: { version: "desc" },
+  });
+}
+
+// Phase 7: GET /workflows/:id/drafts -- full version history for this workflow.
+export function findAllDraftsForWorkflow(workflowId: string) {
+  return prisma.draft.findMany({
+    where: { workflowId },
+    orderBy: { version: "asc" },
+  });
+}
+
+// Phase 7: GET /workflows/:id/drafts/:version, and used by
+// approval/draftReview.ts to confirm a review action targets the current
+// latest version.
+export function findDraftByVersion(workflowId: string, version: number) {
+  return prisma.draft.findUnique({
+    where: { workflowId_version: { workflowId, version } },
   });
 }

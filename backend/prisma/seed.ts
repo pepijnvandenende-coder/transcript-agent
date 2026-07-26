@@ -43,7 +43,7 @@ async function main() {
 
   // MANDATORY, unconditionally -- no confidence threshold applies (matches
   // the architecture doc's policy table's "n/a"). See approval/gateway.ts's
-  // mandatoryReview routing shape for how this always proceeds straight to
+  // bypassEvent routing shape for how this always proceeds straight to
   // AWAITING_REPORT_TYPE_SELECTION regardless of confidence or schema validity.
   await prisma.approvalPolicy.upsert({
     where: { skillName: "ReportTypeAdvisor" },
@@ -55,13 +55,27 @@ async function main() {
   });
 
   // Phase 6: DraftGenerator is MANDATORY unconditionally, same shape as
-  // ReportTypeAdvisor -- see approval/gateway.ts's mandatoryReview routing.
+  // ReportTypeAdvisor -- see approval/gateway.ts's bypassEvent routing.
   await prisma.approvalPolicy.upsert({
     where: { skillName: "DraftGenerator" },
     update: { policyType: PolicyType.MANDATORY, confidenceThreshold: null },
     create: {
       skillName: "DraftGenerator",
       policyType: PolicyType.MANDATORY,
+    },
+  });
+
+  // Phase 7: ADVISORY_ONLY, unconditionally -- no confidence threshold
+  // applies (matches the architecture doc's policy table). See
+  // approval/gateway.ts's DraftQualityPrecheck routing entry: this resolves
+  // to policyResolver.ts's "auto_approved" outcome regardless of confidence,
+  // so the precheck always auto-approves and proceeds to DRAFT_PENDING_REVIEW.
+  await prisma.approvalPolicy.upsert({
+    where: { skillName: "DraftQualityPrecheck" },
+    update: { policyType: PolicyType.ADVISORY_ONLY, confidenceThreshold: null },
+    create: {
+      skillName: "DraftQualityPrecheck",
+      policyType: PolicyType.ADVISORY_ONLY,
     },
   });
 

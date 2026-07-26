@@ -20,6 +20,7 @@ const MERGER_SKILL_NAME = "Merger";
 const CONFLICT_DETECTOR_SKILL_NAME = "ConflictDetector";
 const REPORT_TYPE_ADVISOR_SKILL_NAME = "ReportTypeAdvisor";
 const DRAFT_GENERATOR_SKILL_NAME = "DraftGenerator";
+const DRAFT_QUALITY_PRECHECK_SKILL_NAME = "DraftQualityPrecheck";
 
 // claimNextQueuedJob() claims the globally oldest QUEUED job across every
 // workflow, not just this test's own -- and other test files (e.g.
@@ -73,6 +74,11 @@ describe("jobs: queue + processNextJob (no daemon required)", () => {
       where: { skillName: DRAFT_GENERATOR_SKILL_NAME },
       update: { policyType: PolicyType.MANDATORY, confidenceThreshold: null },
       create: { skillName: DRAFT_GENERATOR_SKILL_NAME, policyType: PolicyType.MANDATORY },
+    });
+    await prisma.approvalPolicy.upsert({
+      where: { skillName: DRAFT_QUALITY_PRECHECK_SKILL_NAME },
+      update: { policyType: PolicyType.ADVISORY_ONLY, confidenceThreshold: null },
+      create: { skillName: DRAFT_QUALITY_PRECHECK_SKILL_NAME, policyType: PolicyType.ADVISORY_ONLY },
     });
     await prisma.reportTypePolicy.upsert({
       where: { key: "thematic" },
@@ -132,6 +138,7 @@ describe("jobs: queue + processNextJob (no daemon required)", () => {
     await prisma.aiOutputInput.deleteMany({ where: { aiOutput: { workflowId } } });
     await prisma.conflict.deleteMany({ where: { workflowId } });
     await prisma.reportTypeSuggestion.deleteMany({ where: { workflowId } });
+    await prisma.draftPrecheck.deleteMany({ where: { workflowId } });
     await prisma.draft.deleteMany({ where: { workflowId } });
     await prisma.aiOutput.deleteMany({ where: { workflowId } });
     await prisma.job.deleteMany({ where: { workflowId } });
@@ -265,11 +272,37 @@ describe("jobs: queue + processNextJob (no daemon required)", () => {
     expect(sections.map((s) => s.heading)).toEqual(expect.arrayContaining(["Samenvatting", "Notulen"]));
   });
 
+  it("entering DRAFT_QUALITY_PRECHECK auto-enqueued a DRAFT_QUALITY_PRECHECK job, which processNextJob also completes", async () => {
+    // Continues from the previous test: entering DRAFT_QUALITY_PRECHECK
+    // auto-enqueued this job via the same enqueueForStateEntry mechanism.
+    // DraftQualityPrecheck's ADVISORY_ONLY policy means this always proceeds
+    // to DRAFT_PENDING_REVIEW regardless of confidence, same as
+    // SUGGEST_REPORT_TYPE's MANDATORY policy above.
+    const queuedPrecheck = await prisma.job.findFirstOrThrow({
+      where: { workflowId, jobType: JobType.DRAFT_QUALITY_PRECHECK },
+      orderBy: { createdAt: "desc" },
+    });
+
+    await processUntilSettled(queuedPrecheck.id);
+
+    const completed = await prisma.job.findUniqueOrThrow({ where: { id: queuedPrecheck.id } });
+    expect(completed.status).toBe(JobStatus.SUCCEEDED);
+    expect(completed.resultAiOutputId).not.toBeNull();
+
+    const workflow = await prisma.workflow.findUniqueOrThrow({ where: { id: workflowId } });
+    expect(workflow.currentState).toBe(WorkflowState.DRAFT_PENDING_REVIEW);
+
+    const precheck = await prisma.draftPrecheck.findFirstOrThrow({ where: { workflowId } });
+    expect(precheck.aiOutputId).toBe(completed.resultAiOutputId);
+    expect(precheck.overallScore).toBe(1);
+    expect(precheck.blockingIssues).toEqual([]);
+  });
+
   it("marks a job FAILED when no runner is registered for its job_type", async () => {
-    // GENERATE_DRAFT is now registered too (Phase 6) -- DRAFT_QUALITY_PRECHECK
-    // is the next still-unregistered job_type.
+    // GENERATE_DRAFT and DRAFT_QUALITY_PRECHECK are now registered too
+    // (Phases 6-7) -- REVISE_DRAFT is the next still-unregistered job_type.
     const job = await prisma.job.create({
-      data: { workflowId, jobType: JobType.DRAFT_QUALITY_PRECHECK, status: JobStatus.QUEUED },
+      data: { workflowId, jobType: JobType.REVISE_DRAFT, status: JobStatus.QUEUED },
     });
 
     await processUntilSettled(job.id);

@@ -98,3 +98,25 @@ export const DraftGeneratorEnvelopeSchema = SkillEnvelopeSchema.extend({
   result: DraftGeneratorResultSchema,
 });
 export type DraftGeneratorEnvelope = z.infer<typeof DraftGeneratorEnvelopeSchema>;
+
+// Phase 7: DraftQualityPrecheck's result -- ADVISORY_ONLY, never gates (see
+// approval/gateway.ts's DraftQualityPrecheck SKILL_ROUTING entry). One
+// checklist item per the resolved ReportTypePolicy's requiredSections.
+export const PrecheckChecklistItemSchema = z.object({
+  item: z.string(),
+  passed: z.boolean(),
+});
+export type PrecheckChecklistItem = z.infer<typeof PrecheckChecklistItemSchema>;
+
+export const DraftQualityPrecheckResultSchema = z.object({
+  overall_score: z.number().min(0).max(1),
+  checklist: z.array(PrecheckChecklistItemSchema),
+  blocking_issues: z.array(z.string()),
+  recommendation: z.string(),
+});
+export type DraftQualityPrecheckResult = z.infer<typeof DraftQualityPrecheckResultSchema>;
+
+export const DraftQualityPrecheckEnvelopeSchema = SkillEnvelopeSchema.extend({
+  result: DraftQualityPrecheckResultSchema,
+});
+export type DraftQualityPrecheckEnvelope = z.infer<typeof DraftQualityPrecheckEnvelopeSchema>;

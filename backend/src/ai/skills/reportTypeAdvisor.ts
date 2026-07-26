@@ -13,7 +13,7 @@ import type { ReportTypeAdvisorEnvelope } from "../skillEnvelope";
 // question-and-answer-style conversation (the "qa" policy); their absence
 // suggests a topic-organized discussion (the "thematic" policy). Confidence
 // is fixed and unused for routing -- ReportTypeAdvisor's policy is MANDATORY
-// unconditionally (see approval/gateway.ts's mandatoryReview shape).
+// unconditionally (see approval/gateway.ts's bypassEvent shape).
 export const SKILL_NAME = "ReportTypeAdvisor";
 export const SCHEMA_VERSION = "1.0.0";
 export const PROMPT_VERSION = "stub-1";

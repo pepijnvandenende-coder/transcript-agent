@@ -10,6 +10,7 @@ const MERGER_SKILL_NAME = "Merger";
 const CONFLICT_DETECTOR_SKILL_NAME = "ConflictDetector";
 const REPORT_TYPE_ADVISOR_SKILL_NAME = "ReportTypeAdvisor";
 const DRAFT_GENERATOR_SKILL_NAME = "DraftGenerator";
+const DRAFT_QUALITY_PRECHECK_SKILL_NAME = "DraftQualityPrecheck";
 
 describe("policyResolver.resolvePolicy", () => {
   beforeAll(async () => {
@@ -52,6 +53,14 @@ describe("policyResolver.resolvePolicy", () => {
       create: {
         skillName: DRAFT_GENERATOR_SKILL_NAME,
         policyType: PolicyType.MANDATORY,
+      },
+    });
+    await prisma.approvalPolicy.upsert({
+      where: { skillName: DRAFT_QUALITY_PRECHECK_SKILL_NAME },
+      update: { policyType: PolicyType.ADVISORY_ONLY, confidenceThreshold: null },
+      create: {
+        skillName: DRAFT_QUALITY_PRECHECK_SKILL_NAME,
+        policyType: PolicyType.ADVISORY_ONLY,
       },
     });
   });
@@ -128,6 +137,14 @@ describe("policyResolver.resolvePolicy", () => {
 
     const low = await resolvePolicy({ skillName: DRAFT_GENERATOR_SKILL_NAME, result: {}, confidence: 0.01 });
     expect(low.outcome).toBe("mandatory");
+  });
+
+  it("DraftQualityPrecheck's ADVISORY_ONLY policy returns outcome 'auto_approved' unconditionally, regardless of confidence", async () => {
+    const high = await resolvePolicy({ skillName: DRAFT_QUALITY_PRECHECK_SKILL_NAME, result: {}, confidence: 0.99 });
+    expect(high.outcome).toBe("auto_approved");
+
+    const low = await resolvePolicy({ skillName: DRAFT_QUALITY_PRECHECK_SKILL_NAME, result: {}, confidence: 0.01 });
+    expect(low.outcome).toBe("auto_approved");
   });
 });
 
