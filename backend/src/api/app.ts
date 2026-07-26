@@ -5,6 +5,7 @@ import { draftsRouter } from "./drafts.routes";
 import { finalReportRouter } from "./finalReport.routes";
 import { reportTypeRouter } from "./reportType.routes";
 import { uploadsRouter } from "./uploads.routes";
+import { usersRouter } from "./users.routes";
 import { validationRouter } from "./validation.routes";
 import { workflowsRouter } from "./workflows.routes";
 
@@ -19,5 +20,6 @@ export function createApp() {
   app.use("/workflows", reportTypeRouter);
   app.use("/workflows", draftsRouter);
   app.use("/workflows", finalReportRouter);
+  app.use("/users", usersRouter);
   return app;
 }
