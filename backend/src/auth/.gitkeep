@@ -1,0 +1,2 @@
+# Authentication/identity. Implemented in a later phase.
+# Phase 1 API endpoints accept an explicit actorId instead -- see docs/phase-1/README.md.

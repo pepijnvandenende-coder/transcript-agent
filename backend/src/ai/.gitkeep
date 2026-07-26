@@ -1,0 +1,2 @@
+# AI skill modules (prompt template + JSON schema + confidence per skill).
+# Implemented in a later phase -- no AI calls or LLM integration in Phase 1.

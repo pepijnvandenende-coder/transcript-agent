@@ -1,0 +1,2 @@
+# Async job queue + workers for AI task execution.
+# Implemented in a later phase, alongside the AI skill modules.

@@ -1,0 +1,339 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// The FSM's full state space, defined once here. Prisma generates the
+// matching TypeScript enum; backend/src/workflow/states.ts re-exports it
+// rather than redeclaring the same states, so the DB schema and the engine
+// can never drift out of sync with each other.
+enum WorkflowState {
+  CREATED
+  TRANSCRIPT_UPLOADED
+  VALIDATING_TRANSCRIPT
+  TRANSCRIPT_INSUFFICIENT
+  PENDING_HUMAN_CONFIRMATION
+  MERGING
+  DETECTING_CONFLICTS
+  CONFLICTS_PENDING_REVIEW
+  SUGGESTING_REPORT_TYPE
+  AWAITING_REPORT_TYPE_SELECTION
+  GENERATING_DRAFT
+  DRAFT_QUALITY_PRECHECK
+  DRAFT_PENDING_REVIEW
+  REVISING_DRAFT
+  GENERATING_FINAL
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
+enum WorkflowStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum JobType {
+  VALIDATE_TRANSCRIPT
+  MERGE
+  DETECT_CONFLICTS
+  SUGGEST_REPORT_TYPE
+  GENERATE_DRAFT
+  DRAFT_QUALITY_PRECHECK
+  REVISE_DRAFT
+  RENDER_FINAL
+}
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+enum ValidationStatus {
+  VALID
+  INVALID
+}
+
+enum ApprovalStatus {
+  PENDING
+  AUTO_APPROVED
+  HUMAN_APPROVED
+  HUMAN_REJECTED
+}
+
+enum PolicyType {
+  AUTO_IF_ABOVE
+  MANDATORY
+  ADVISORY_ONLY
+}
+
+enum ActorType {
+  SYSTEM
+  USER
+}
+
+enum RetryMode {
+  SAME_INPUT
+  EDITED_INPUT
+}
+
+enum ApprovalRequestStatus {
+  PENDING
+  RESOLVED
+}
+
+enum AiOutputInputType {
+  TRANSCRIPT
+  NOTES
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  role      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  createdWorkflows  Workflow[]        @relation("WorkflowCreatedBy")
+  stateTransitions  StateTransition[]
+  approvedAiOutputs AiOutput[]
+  uploadedTranscripts Transcript[]
+  uploadedNotes       Note[]
+
+  @@map("users")
+}
+
+model Workflow {
+  id           String         @id @default(uuid())
+  title        String
+  currentState WorkflowState  @default(CREATED) @map("current_state")
+  reportType   String?        @map("report_type")
+  status       WorkflowStatus @default(ACTIVE)
+  createdById  String         @map("created_by")
+  createdBy    User           @relation("WorkflowCreatedBy", fields: [createdById], references: [id])
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  stateTransitions StateTransition[]
+  jobs             Job[]
+  aiOutputs        AiOutput[]
+  transcripts      Transcript[]
+  notes            Note[]
+  approvalRequests ApprovalRequest[]
+  merges           Merge[]
+
+  @@map("workflows")
+}
+
+// The audit trail. Every FSM move -- workflow creation, a user action, or (in
+// a later phase) a system event raised by the Approval Gateway -- writes
+// exactly one row here. See backend/src/workflow/auditTrail.ts for the single
+// write path that guarantees this.
+model StateTransition {
+  id         String        @id @default(uuid())
+  workflowId String        @map("workflow_id")
+  workflow   Workflow      @relation(fields: [workflowId], references: [id])
+  fromState  WorkflowState? @map("from_state")
+  toState    WorkflowState @map("to_state")
+  actorType  ActorType     @map("actor_type")
+  actorId    String?       @map("actor_id")
+  actor      User?         @relation(fields: [actorId], references: [id])
+  aiOutputId String?       @map("ai_output_id")
+  aiOutput   AiOutput?     @relation("TransitionAiOutput", fields: [aiOutputId], references: [id])
+  metadata   Json?
+  occurredAt DateTime      @default(now()) @map("occurred_at")
+
+  @@map("state_transitions")
+}
+
+// Async AI task tracking. Not exercised by any Phase 1 logic (no AI calls
+// exist yet) but created now per the approved architecture, ready for the
+// job queue/workers introduced in a later phase.
+model Job {
+  id                String     @id @default(uuid())
+  workflowId        String     @map("workflow_id")
+  workflow          Workflow   @relation(fields: [workflowId], references: [id])
+  jobType           JobType    @map("job_type")
+  status            JobStatus  @default(QUEUED)
+  inputRef          String?    @map("input_ref")
+  outputRef         String?    @map("output_ref")
+  error             String?
+  attemptCount      Int        @default(0) @map("attempt_count")
+  resultAiOutputId  String?    @unique @map("result_ai_output_id")
+  resultAiOutput    AiOutput?  @relation("JobResultOutput", fields: [resultAiOutputId], references: [id])
+  // Phase 3: set when this job was enqueued by a retry/edit-retry action at
+  // PENDING_HUMAN_CONFIRMATION, rather than a fresh skill run. The runner
+  // threads both through to handleSkillOutput() so it can compute the new
+  // ai_outputs row's attempt_number and retry lineage.
+  retryOfAiOutputId String?    @map("retry_of_ai_output_id")
+  retryOfAiOutput   AiOutput?  @relation("JobRetrySource", fields: [retryOfAiOutputId], references: [id])
+  retryMode         RetryMode? @map("retry_mode")
+  createdAt         DateTime   @default(now()) @map("created_at")
+  completedAt       DateTime?  @map("completed_at")
+
+  producedOutputs AiOutput[] @relation("AiOutputSourceJob")
+
+  @@map("jobs")
+}
+
+// The governance table for every AI call: schema validation status,
+// confidence, approval status, and the retry lineage (attempt_number /
+// retry_of_ai_output_id / retry_mode) that backs the Confirm / Retry /
+// Edit-and-Retry design at PENDING_HUMAN_CONFIRMATION. Not populated by any
+// Phase 1 logic (no AI calls exist yet), but created now so later phases
+// don't need a schema migration to introduce it.
+model AiOutput {
+  id                  String            @id @default(uuid())
+  jobId               String?           @map("job_id")
+  job                 Job?              @relation("AiOutputSourceJob", fields: [jobId], references: [id])
+  workflowId          String            @map("workflow_id")
+  workflow            Workflow          @relation(fields: [workflowId], references: [id])
+  skillName           String            @map("skill_name")
+  promptVersion       String            @map("prompt_version")
+  schemaVersion       String            @map("schema_version")
+  rawOutput           Json              @map("raw_output")
+  validationStatus    ValidationStatus  @map("validation_status")
+  validationErrors    Json?             @map("validation_errors")
+  confidenceScore     Float?            @map("confidence_score")
+  confidenceBreakdown Json?             @map("confidence_breakdown")
+  policyApplied       PolicyType?       @map("policy_applied")
+  approvalStatus      ApprovalStatus    @default(PENDING) @map("approval_status")
+  approvedById        String?           @map("approved_by")
+  approvedBy          User?             @relation(fields: [approvedById], references: [id])
+  approvedAt          DateTime?         @map("approved_at")
+  // approval_requests doesn't exist until a later phase; kept as a plain,
+  // unconstrained column now per the approved architecture.
+  approvalRequestId   String?           @map("approval_request_id")
+  attemptNumber       Int               @default(1) @map("attempt_number")
+  retryOfAiOutputId   String?           @map("retry_of_ai_output_id")
+  retryOf             AiOutput?         @relation("AiOutputRetryChain", fields: [retryOfAiOutputId], references: [id])
+  retries              AiOutput[]        @relation("AiOutputRetryChain")
+  retryMode           RetryMode?        @map("retry_mode")
+  reviewerComment     String?           @map("reviewer_comment")
+  createdAt           DateTime          @default(now()) @map("created_at")
+
+  jobResultFor     Job?              @relation("JobResultOutput")
+  retriedByJobs    Job[]             @relation("JobRetrySource")
+  stateTransitions StateTransition[] @relation("TransitionAiOutput")
+  approvalRequests ApprovalRequest[]
+  inputs           AiOutputInput[]
+  merges           Merge[]
+
+  @@map("ai_outputs")
+}
+
+// Versioned, insert-only transcript uploads (Phase 2). A re-upload creates a
+// new version row for the same workflow rather than overwriting the
+// previous one, per the architecture doc's "regenerable inputs are
+// insert-only" rule. storage_ref points at the object storage adapter
+// (backend/src/storage), not a raw filesystem path.
+model Transcript {
+  id           String   @id @default(uuid())
+  workflowId   String   @map("workflow_id")
+  workflow     Workflow @relation(fields: [workflowId], references: [id])
+  version      Int
+  storageRef   String   @map("storage_ref")
+  uploadedById String   @map("uploaded_by")
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id])
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@unique([workflowId, version])
+  @@map("transcripts")
+}
+
+// Same versioning rule as Transcript. Persisted starting Phase 2; not read
+// by any skill until the Merger phase.
+model Note {
+  id           String   @id @default(uuid())
+  workflowId   String   @map("workflow_id")
+  workflow     Workflow @relation(fields: [workflowId], references: [id])
+  version      Int
+  storageRef   String   @map("storage_ref")
+  uploadedById String   @map("uploaded_by")
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id])
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@unique([workflowId, version])
+  @@map("notes")
+}
+
+// One row per open Human Approval Layer episode (Phase 2: confirm-only).
+// A resolved episode is never reopened -- a later low-confidence event opens
+// a new ApprovalRequest row rather than mutating this one.
+model ApprovalRequest {
+  id                String                @id @default(uuid())
+  workflowId        String                @map("workflow_id")
+  workflow          Workflow              @relation(fields: [workflowId], references: [id])
+  aiOutputId        String                @map("ai_output_id")
+  aiOutput          AiOutput              @relation(fields: [aiOutputId], references: [id])
+  intendedNextState WorkflowState         @map("intended_next_state")
+  attemptCount      Int                   @default(1) @map("attempt_count")
+  status            ApprovalRequestStatus @default(PENDING)
+  resolution        String?
+  createdAt         DateTime              @default(now()) @map("created_at")
+  resolvedAt        DateTime?             @map("resolved_at")
+
+  @@map("approval_requests")
+}
+
+// Polymorphic lineage join: maps an ai_outputs row to the exact versioned
+// input(s) it consumed. input_id intentionally has no FK -- it points into
+// whichever table input_type names (Transcript today; Note and others once
+// later skills consume them) -- matching the existing unconstrained-column
+// pattern already used for ai_outputs.approval_request_id.
+model AiOutputInput {
+  id           String            @id @default(uuid())
+  aiOutputId   String            @map("ai_output_id")
+  aiOutput     AiOutput          @relation(fields: [aiOutputId], references: [id])
+  inputType    AiOutputInputType @map("input_type")
+  inputId      String            @map("input_id")
+  inputVersion Int               @map("input_version")
+  createdAt    DateTime          @default(now()) @map("created_at")
+
+  @@map("ai_output_inputs")
+}
+
+// Versioned, insert-only Merger output (Phase 3) -- one row per schema-valid
+// Merger attempt, regardless of eventual approval outcome, mirroring how
+// ai_outputs preserves every attempt. Written by jobs/runners/mergeRunner.ts,
+// not the gateway, so approval/gateway.ts stays skill-agnostic.
+model Merge {
+  id             String   @id @default(uuid())
+  workflowId     String   @map("workflow_id")
+  workflow       Workflow @relation(fields: [workflowId], references: [id])
+  version        Int
+  aiOutputId     String   @map("ai_output_id")
+  aiOutput       AiOutput @relation(fields: [aiOutputId], references: [id])
+  mergedSections Json     @map("merged_sections")
+  unmatchedNotes Json     @map("unmatched_notes")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@unique([workflowId, version])
+  @@map("merges")
+}
+
+model ApprovalPolicy {
+  skillName           String     @id @map("skill_name")
+  policyType          PolicyType @map("policy_type")
+  confidenceThreshold Float?     @map("confidence_threshold")
+  maxRetries          Int?       @default(5) @map("max_retries")
+  updatedAt           DateTime   @updatedAt @map("updated_at")
+
+  @@map("approval_policies")
+}
+
+model SkillRegistry {
+  skillName            String  @id @map("skill_name")
+  currentPromptVersion String  @map("current_prompt_version")
+  currentSchemaVersion String  @map("current_schema_version")
+  description          String?
+
+  @@map("skill_registry")
+}
