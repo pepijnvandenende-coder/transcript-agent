@@ -4,6 +4,7 @@ import path from "node:path";
 import { ActorType, JobStatus, JobType, PolicyType } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { retryApprovalRequest } from "../../src/approval/gateway";
+import { requestDraftChanges } from "../../src/approval/draftReview";
 import { selectReportType } from "../../src/approval/reportTypeSelection";
 import { env } from "../../src/config/env";
 import { enqueue } from "../../src/jobs/queue";
@@ -21,6 +22,7 @@ const CONFLICT_DETECTOR_SKILL_NAME = "ConflictDetector";
 const REPORT_TYPE_ADVISOR_SKILL_NAME = "ReportTypeAdvisor";
 const DRAFT_GENERATOR_SKILL_NAME = "DraftGenerator";
 const DRAFT_QUALITY_PRECHECK_SKILL_NAME = "DraftQualityPrecheck";
+const DRAFT_REVISER_SKILL_NAME = "DraftReviser";
 
 // claimNextQueuedJob() claims the globally oldest QUEUED job across every
 // workflow, not just this test's own -- and other test files (e.g.
@@ -79,6 +81,11 @@ describe("jobs: queue + processNextJob (no daemon required)", () => {
       where: { skillName: DRAFT_QUALITY_PRECHECK_SKILL_NAME },
       update: { policyType: PolicyType.ADVISORY_ONLY, confidenceThreshold: null },
       create: { skillName: DRAFT_QUALITY_PRECHECK_SKILL_NAME, policyType: PolicyType.ADVISORY_ONLY },
+    });
+    await prisma.approvalPolicy.upsert({
+      where: { skillName: DRAFT_REVISER_SKILL_NAME },
+      update: { policyType: PolicyType.MANDATORY, confidenceThreshold: null },
+      create: { skillName: DRAFT_REVISER_SKILL_NAME, policyType: PolicyType.MANDATORY },
     });
     await prisma.reportTypePolicy.upsert({
       where: { key: "thematic" },
@@ -139,6 +146,7 @@ describe("jobs: queue + processNextJob (no daemon required)", () => {
     await prisma.conflict.deleteMany({ where: { workflowId } });
     await prisma.reportTypeSuggestion.deleteMany({ where: { workflowId } });
     await prisma.draftPrecheck.deleteMany({ where: { workflowId } });
+    await prisma.reviewFeedback.deleteMany({ where: { workflowId } });
     await prisma.draft.deleteMany({ where: { workflowId } });
     await prisma.aiOutput.deleteMany({ where: { workflowId } });
     await prisma.job.deleteMany({ where: { workflowId } });
@@ -298,11 +306,48 @@ describe("jobs: queue + processNextJob (no daemon required)", () => {
     expect(precheck.blockingIssues).toEqual([]);
   });
 
+  it("requestDraftChanges auto-enqueued a REVISE_DRAFT job, which processNextJob also completes, producing a second draft version", async () => {
+    // The real flow: approval/draftReview.ts's requestDraftChanges() records
+    // the feedback and (via enqueueForStateEntry) auto-starts DraftReviser's
+    // job the same way every other PROCESSING-state entry does.
+    const draftBeforeRevision = await prisma.draft.findFirstOrThrow({ where: { workflowId }, orderBy: { version: "desc" } });
+
+    const updated = await requestDraftChanges({
+      workflowId,
+      actorId: userId,
+      version: draftBeforeRevision.version,
+      feedback: "Voeg meer detail toe over de genomen besluiten.",
+    });
+    expect(updated.currentState).toBe(WorkflowState.REVISING_DRAFT);
+
+    const queuedRevise = await prisma.job.findFirstOrThrow({
+      where: { workflowId, jobType: JobType.REVISE_DRAFT },
+      orderBy: { createdAt: "desc" },
+    });
+
+    await processUntilSettled(queuedRevise.id);
+
+    const completed = await prisma.job.findUniqueOrThrow({ where: { id: queuedRevise.id } });
+    expect(completed.status).toBe(JobStatus.SUCCEEDED);
+    expect(completed.resultAiOutputId).not.toBeNull();
+
+    const workflow = await prisma.workflow.findUniqueOrThrow({ where: { id: workflowId } });
+    expect(workflow.currentState).toBe(WorkflowState.DRAFT_QUALITY_PRECHECK);
+
+    const revisedDraft = await prisma.draft.findFirstOrThrow({ where: { workflowId }, orderBy: { version: "desc" } });
+    expect(revisedDraft.version).toBe(draftBeforeRevision.version + 1);
+    expect(revisedDraft.aiOutputId).toBe(completed.resultAiOutputId);
+    const sections = revisedDraft.sections as unknown as Array<{ heading: string; content: string }>;
+    const notulen = sections.find((s) => s.heading === "Notulen");
+    expect(notulen?.content).toContain("Voeg meer detail toe over de genomen besluiten.");
+  });
+
   it("marks a job FAILED when no runner is registered for its job_type", async () => {
-    // GENERATE_DRAFT and DRAFT_QUALITY_PRECHECK are now registered too
-    // (Phases 6-7) -- REVISE_DRAFT is the next still-unregistered job_type.
+    // GENERATE_DRAFT, DRAFT_QUALITY_PRECHECK, and REVISE_DRAFT are now
+    // registered too (Phases 6-8) -- RENDER_FINAL is the next
+    // still-unregistered job_type.
     const job = await prisma.job.create({
-      data: { workflowId, jobType: JobType.REVISE_DRAFT, status: JobStatus.QUEUED },
+      data: { workflowId, jobType: JobType.RENDER_FINAL, status: JobStatus.QUEUED },
     });
 
     await processUntilSettled(job.id);

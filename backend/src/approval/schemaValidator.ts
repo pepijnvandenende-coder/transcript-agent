@@ -3,6 +3,7 @@ import {
   ConflictDetectorEnvelopeSchema,
   DraftGeneratorEnvelopeSchema,
   DraftQualityPrecheckEnvelopeSchema,
+  DraftReviserEnvelopeSchema,
   MergerEnvelopeSchema,
   ReportTypeAdvisorEnvelopeSchema,
   TranscriptQualityEnvelopeSchema,
@@ -23,6 +24,7 @@ const SCHEMAS: Record<string, z.ZodTypeAny> = {
   ReportTypeAdvisor: ReportTypeAdvisorEnvelopeSchema,
   DraftGenerator: DraftGeneratorEnvelopeSchema,
   DraftQualityPrecheck: DraftQualityPrecheckEnvelopeSchema,
+  DraftReviser: DraftReviserEnvelopeSchema,
 };
 
 export function checkSchema(skillName: string, rawOutput: unknown): SchemaCheckResult {

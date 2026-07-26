@@ -5,6 +5,7 @@ import type {
   ConflictDetectorEnvelope,
   DraftGeneratorEnvelope,
   DraftQualityPrecheckEnvelope,
+  DraftReviserEnvelope,
   MergerEnvelope,
   ReportTypeAdvisorEnvelope,
   TranscriptQualityEnvelope,
@@ -25,6 +26,7 @@ const CONFLICT_DETECTOR_SKILL_NAME = "ConflictDetector";
 const REPORT_TYPE_ADVISOR_SKILL_NAME = "ReportTypeAdvisor";
 const DRAFT_GENERATOR_SKILL_NAME = "DraftGenerator";
 const DRAFT_QUALITY_PRECHECK_SKILL_NAME = "DraftQualityPrecheck";
+const DRAFT_REVISER_SKILL_NAME = "DraftReviser";
 
 function envelope(overrides: { confidence?: number } = {}): TranscriptQualityEnvelope {
   const { confidence = 0.95 } = overrides;
@@ -120,6 +122,21 @@ function draftQualityPrecheckEnvelope(overrides: { confidence?: number } = {}): 
   };
 }
 
+function draftReviserEnvelope(sections: DraftGeneratorEnvelope["result"]["sections"]): DraftReviserEnvelope {
+  return {
+    skill: DRAFT_REVISER_SKILL_NAME,
+    schema_version: "1.0.0",
+    confidence: 0.8,
+    rationale: "test envelope",
+    flags: [],
+    result: {
+      sections,
+      changes_applied: ["Aanvulling naar aanleiding van reviewer-feedback: test"],
+      unresolved_feedback: [],
+    },
+  };
+}
+
 describe("approval/draftReview", () => {
   let userId: string;
 
@@ -153,6 +170,11 @@ describe("approval/draftReview", () => {
       where: { skillName: DRAFT_QUALITY_PRECHECK_SKILL_NAME },
       update: { policyType: PolicyType.ADVISORY_ONLY, confidenceThreshold: null },
       create: { skillName: DRAFT_QUALITY_PRECHECK_SKILL_NAME, policyType: PolicyType.ADVISORY_ONLY },
+    });
+    await prisma.approvalPolicy.upsert({
+      where: { skillName: DRAFT_REVISER_SKILL_NAME },
+      update: { policyType: PolicyType.MANDATORY, confidenceThreshold: null },
+      create: { skillName: DRAFT_REVISER_SKILL_NAME, policyType: PolicyType.MANDATORY },
     });
     await prisma.reportTypePolicy.upsert({
       where: { key: "thematic" },
@@ -321,5 +343,58 @@ describe("approval/draftReview", () => {
     await expect(
       requestDraftChanges({ workflowId, actorId: userId, version: 999, feedback: "x" }),
     ).rejects.toBeInstanceOf(DraftVersionMismatchError);
+  });
+
+  it("supports a second revision round-trip: after DraftReviser produces v2, approveDraft/requestDraftChanges work against it unmodified", async () => {
+    const { workflowId, draft } = await workflowAtDraftPendingReview("Draft Review Second Round Trip");
+
+    await requestDraftChanges({
+      workflowId,
+      actorId: userId,
+      version: draft.version,
+      feedback: "Please expand the Notulen section.",
+    });
+
+    // handleSkillOutput() never writes skill-specific rows itself -- this
+    // test calls it directly (bypassing the job queue/draftReviserRunner.ts),
+    // so the new Draft version is created here instead, mirroring
+    // workflowAtDraftPendingReview's own DraftGenerator step above.
+    const revisedSections = [
+      { heading: "Samenvatting", content: "x" },
+      { heading: "Notulen", content: "y\n\nAanvulling naar aanleiding van reviewer-feedback: expanded" },
+    ];
+    const { aiOutputId: revisedAiOutputId } = await handleSkillOutput({
+      workflowId,
+      envelope: draftReviserEnvelope(revisedSections),
+      promptVersion: "stub-1",
+      schemaVersion: "1.0.0",
+    });
+    const revisedDraft = await createDraftVersion({
+      workflowId,
+      aiOutputId: revisedAiOutputId,
+      reportType: draft.reportType,
+      title: draft.title,
+      attendees: draft.attendees as unknown as string[],
+      date: draft.date,
+      subject: draft.subject,
+      sections: revisedSections,
+      coverage: draft.coverage ?? undefined,
+    });
+    expect(revisedDraft.version).toBe(draft.version + 1);
+
+    await handleSkillOutput({
+      workflowId,
+      envelope: draftQualityPrecheckEnvelope(),
+      promptVersion: "stub-1",
+      schemaVersion: "1.0.0",
+    });
+
+    // Unmodified approveDraft() -- generic over "whichever draft is latest" --
+    // now approves v2 with no code changes needed for this second round.
+    const updated = await approveDraft({ workflowId, actorId: userId, version: revisedDraft.version });
+    expect(updated.currentState).toBe(WorkflowState.GENERATING_FINAL);
+
+    const aiOutput = await prisma.aiOutput.findUniqueOrThrow({ where: { id: revisedDraft.aiOutputId } });
+    expect(aiOutput.approvalStatus).toBe("HUMAN_APPROVED");
   });
 });

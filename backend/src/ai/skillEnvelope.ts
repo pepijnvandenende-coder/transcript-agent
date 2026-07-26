@@ -120,3 +120,20 @@ export const DraftQualityPrecheckEnvelopeSchema = SkillEnvelopeSchema.extend({
   result: DraftQualityPrecheckResultSchema,
 });
 export type DraftQualityPrecheckEnvelope = z.infer<typeof DraftQualityPrecheckEnvelopeSchema>;
+
+// Phase 8: DraftReviser's result -- MANDATORY, same unconditional-single-edge
+// shape as ReportTypeAdvisor/DraftGenerator (see approval/gateway.ts's
+// DraftReviser SKILL_ROUTING entry). Narrower than DraftGeneratorResult --
+// no title/attendees/date/subject/report_type, since a revision only changes
+// content; the runner carries those over from the draft being revised.
+export const DraftReviserResultSchema = z.object({
+  sections: z.array(DraftSectionSchema),
+  changes_applied: z.array(z.string()),
+  unresolved_feedback: z.array(z.string()),
+});
+export type DraftReviserResult = z.infer<typeof DraftReviserResultSchema>;
+
+export const DraftReviserEnvelopeSchema = SkillEnvelopeSchema.extend({
+  result: DraftReviserResultSchema,
+});
+export type DraftReviserEnvelope = z.infer<typeof DraftReviserEnvelopeSchema>;

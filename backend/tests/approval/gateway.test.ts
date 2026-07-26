@@ -5,6 +5,7 @@ import type {
   ConflictDetectorEnvelope,
   DraftGeneratorEnvelope,
   DraftQualityPrecheckEnvelope,
+  DraftReviserEnvelope,
   MergerEnvelope,
   ReportTypeAdvisorEnvelope,
   TranscriptQualityEnvelope,
@@ -27,6 +28,7 @@ const CONFLICT_DETECTOR_SKILL_NAME = "ConflictDetector";
 const REPORT_TYPE_ADVISOR_SKILL_NAME = "ReportTypeAdvisor";
 const DRAFT_GENERATOR_SKILL_NAME = "DraftGenerator";
 const DRAFT_QUALITY_PRECHECK_SKILL_NAME = "DraftQualityPrecheck";
+const DRAFT_REVISER_SKILL_NAME = "DraftReviser";
 
 function envelope(
   overrides: { confidence?: number; sufficient?: boolean; issues?: string[] } = {},
@@ -126,6 +128,25 @@ function draftQualityPrecheckEnvelope(overrides: { confidence?: number } = {}): 
   };
 }
 
+function draftReviserEnvelope(overrides: { confidence?: number } = {}): DraftReviserEnvelope {
+  const { confidence = 0.8 } = overrides;
+  return {
+    skill: DRAFT_REVISER_SKILL_NAME,
+    schema_version: "1.0.0",
+    confidence,
+    rationale: "test envelope",
+    flags: [],
+    result: {
+      sections: [
+        { heading: "Samenvatting", content: "x" },
+        { heading: "Notulen", content: "y\n\nAanvulling naar aanleiding van reviewer-feedback: please expand" },
+      ],
+      changes_applied: ["Aanvulling naar aanleiding van reviewer-feedback: please expand"],
+      unresolved_feedback: [],
+    },
+  };
+}
+
 describe("approval/gateway", () => {
   let userId: string;
 
@@ -159,6 +180,11 @@ describe("approval/gateway", () => {
       where: { skillName: DRAFT_QUALITY_PRECHECK_SKILL_NAME },
       update: { policyType: PolicyType.ADVISORY_ONLY, confidenceThreshold: null },
       create: { skillName: DRAFT_QUALITY_PRECHECK_SKILL_NAME, policyType: PolicyType.ADVISORY_ONLY },
+    });
+    await prisma.approvalPolicy.upsert({
+      where: { skillName: DRAFT_REVISER_SKILL_NAME },
+      update: { policyType: PolicyType.MANDATORY, confidenceThreshold: null },
+      create: { skillName: DRAFT_REVISER_SKILL_NAME, policyType: PolicyType.MANDATORY },
     });
 
     const user = await prisma.user.create({
@@ -771,6 +797,113 @@ describe("approval/gateway", () => {
       expect(aiOutput.validationStatus).toBe("INVALID");
       expect(aiOutput.validationErrors).not.toBeNull();
       // Not auto-approved on the invalid path -- there was nothing valid to approve.
+      expect(aiOutput.approvalStatus).toBe("PENDING");
+
+      const openRequest = await prisma.approvalRequest.findFirst({ where: { aiOutputId: aiOutput.id } });
+      expect(openRequest).toBeNull();
+    });
+  });
+
+  describe("DraftReviser routing (REVISING_DRAFT -> DRAFT_QUALITY_PRECHECK)", () => {
+    async function workflowAtRevisingDraft(title: string) {
+      const workflow = await workflowAtValidating(title);
+      await handleSkillOutput({
+        workflowId: workflow.id,
+        envelope: envelope({ confidence: 0.95 }),
+        promptVersion: "stub-1",
+        schemaVersion: "1.0.0",
+      });
+      await handleSkillOutput({
+        workflowId: workflow.id,
+        envelope: mergerEnvelope({ confidence: 0.95 }),
+        promptVersion: "stub-1",
+        schemaVersion: "1.0.0",
+      });
+      await handleSkillOutput({
+        workflowId: workflow.id,
+        envelope: conflictDetectorEnvelope({ confidence: 0.9 }),
+        promptVersion: "stub-1",
+        schemaVersion: "1.0.0",
+      });
+      await handleSkillOutput({
+        workflowId: workflow.id,
+        envelope: reportTypeAdvisorEnvelope({ confidence: 0.85 }),
+        promptVersion: "stub-1",
+        schemaVersion: "1.0.0",
+      });
+      await engine.transition({
+        workflowId: workflow.id,
+        trigger: { kind: "user_action", action: "select_report_type" },
+        actor: { actorType: ActorType.USER, actorId: userId },
+      });
+      await handleSkillOutput({
+        workflowId: workflow.id,
+        envelope: draftGeneratorEnvelope({ confidence: 0.8 }),
+        promptVersion: "stub-1",
+        schemaVersion: "1.0.0",
+      });
+      await handleSkillOutput({
+        workflowId: workflow.id,
+        envelope: draftQualityPrecheckEnvelope(),
+        promptVersion: "stub-1",
+        schemaVersion: "1.0.0",
+      });
+      // request_draft_changes is a plain user_action on DRAFT_PENDING_REVIEW --
+      // bypassed directly here (like select_report_type above) since these
+      // tests exercise handleSkillOutput() directly, not
+      // approval/draftReview.ts's requestDraftChanges().
+      await engine.transition({
+        workflowId: workflow.id,
+        trigger: { kind: "user_action", action: "request_draft_changes" },
+        actor: { actorType: ActorType.USER, actorId: userId },
+      });
+      return prisma.workflow.findUniqueOrThrow({ where: { id: workflow.id } });
+    }
+
+    it("always transitions via draft_revised regardless of confidence -- no low/auto split, no auto-approval", async () => {
+      const workflow = await workflowAtRevisingDraft("Gateway DraftReviser Low Confidence Still Proceeds");
+
+      await handleSkillOutput({
+        workflowId: workflow.id,
+        envelope: draftReviserEnvelope({ confidence: 0.01 }),
+        promptVersion: "stub-1",
+        schemaVersion: "1.0.0",
+      });
+
+      const reloaded = await prisma.workflow.findUniqueOrThrow({ where: { id: workflow.id } });
+      expect(reloaded.currentState).toBe(WorkflowState.DRAFT_QUALITY_PRECHECK);
+
+      const aiOutput = await prisma.aiOutput.findFirstOrThrow({
+        where: { workflowId: workflow.id, skillName: DRAFT_REVISER_SKILL_NAME },
+      });
+      // Not auto-approved -- the (later-phase) human checkpoint at
+      // DRAFT_PENDING_REVIEW hasn't happened yet for this revised version.
+      expect(aiOutput.approvalStatus).toBe("PENDING");
+
+      const openRequest = await prisma.approvalRequest.findFirst({ where: { aiOutputId: aiOutput.id } });
+      expect(openRequest).toBeNull();
+    });
+
+    it("schema-invalid output ALSO proceeds via draft_revised -- no stuck workflow, no approval_requests", async () => {
+      const workflow = await workflowAtRevisingDraft("Gateway DraftReviser Schema Invalid");
+
+      const invalid = { ...draftReviserEnvelope(), confidence: -1 };
+
+      await handleSkillOutput({
+        workflowId: workflow.id,
+        envelope: invalid,
+        promptVersion: "stub-1",
+        schemaVersion: "1.0.0",
+      });
+
+      const reloaded = await prisma.workflow.findUniqueOrThrow({ where: { id: workflow.id } });
+      expect(reloaded.currentState).toBe(WorkflowState.DRAFT_QUALITY_PRECHECK);
+
+      const aiOutput = await prisma.aiOutput.findFirstOrThrow({
+        where: { workflowId: workflow.id, skillName: DRAFT_REVISER_SKILL_NAME },
+      });
+      expect(aiOutput.validationStatus).toBe("INVALID");
+      expect(aiOutput.validationErrors).not.toBeNull();
       expect(aiOutput.approvalStatus).toBe("PENDING");
 
       const openRequest = await prisma.approvalRequest.findFirst({ where: { aiOutputId: aiOutput.id } });

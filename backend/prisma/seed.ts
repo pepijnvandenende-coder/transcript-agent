@@ -79,6 +79,18 @@ async function main() {
     },
   });
 
+  // Phase 8: DraftReviser is MANDATORY unconditionally, same shape as
+  // ReportTypeAdvisor/DraftGenerator -- see approval/gateway.ts's bypassEvent
+  // routing.
+  await prisma.approvalPolicy.upsert({
+    where: { skillName: "DraftReviser" },
+    update: { policyType: PolicyType.MANDATORY, confidenceThreshold: null },
+    create: {
+      skillName: "DraftReviser",
+      policyType: PolicyType.MANDATORY,
+    },
+  });
+
   // Phase 6: the report generation policy catalog. Metadata only (English
   // columns) -- the actual Dutch prompt instructions live in
   // src/ai/prompts/reportTypes/{key}.md, referenced by promptRef. Adding a

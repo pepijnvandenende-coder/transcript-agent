@@ -11,6 +11,7 @@ const CONFLICT_DETECTOR_SKILL_NAME = "ConflictDetector";
 const REPORT_TYPE_ADVISOR_SKILL_NAME = "ReportTypeAdvisor";
 const DRAFT_GENERATOR_SKILL_NAME = "DraftGenerator";
 const DRAFT_QUALITY_PRECHECK_SKILL_NAME = "DraftQualityPrecheck";
+const DRAFT_REVISER_SKILL_NAME = "DraftReviser";
 
 describe("policyResolver.resolvePolicy", () => {
   beforeAll(async () => {
@@ -61,6 +62,14 @@ describe("policyResolver.resolvePolicy", () => {
       create: {
         skillName: DRAFT_QUALITY_PRECHECK_SKILL_NAME,
         policyType: PolicyType.ADVISORY_ONLY,
+      },
+    });
+    await prisma.approvalPolicy.upsert({
+      where: { skillName: DRAFT_REVISER_SKILL_NAME },
+      update: { policyType: PolicyType.MANDATORY, confidenceThreshold: null },
+      create: {
+        skillName: DRAFT_REVISER_SKILL_NAME,
+        policyType: PolicyType.MANDATORY,
       },
     });
   });
@@ -145,6 +154,14 @@ describe("policyResolver.resolvePolicy", () => {
 
     const low = await resolvePolicy({ skillName: DRAFT_QUALITY_PRECHECK_SKILL_NAME, result: {}, confidence: 0.01 });
     expect(low.outcome).toBe("auto_approved");
+  });
+
+  it("DraftReviser's MANDATORY policy returns outcome 'mandatory' unconditionally, regardless of confidence", async () => {
+    const high = await resolvePolicy({ skillName: DRAFT_REVISER_SKILL_NAME, result: {}, confidence: 0.99 });
+    expect(high.outcome).toBe("mandatory");
+
+    const low = await resolvePolicy({ skillName: DRAFT_REVISER_SKILL_NAME, result: {}, confidence: 0.01 });
+    expect(low.outcome).toBe("mandatory");
   });
 });
 

@@ -177,6 +177,24 @@ const SKILL_ROUTING: Record<string, SkillRouting> = {
     // ConflictDetector/ReportTypeAdvisor/DraftGenerator -- no new AiOutputInputType.
     inputs: [],
   },
+  DraftReviser: {
+    events: {
+      // Unused (bypassEvent fires first -- MANDATORY policy, outcome is
+      // always "mandatory") -- same placeholder pattern as DraftGenerator's
+      // entry above.
+      autoApproved: "draft_revised",
+      lowConfidence: "draft_revised",
+      schemaInvalid: "draft_revised",
+      bypassEvent: "draft_revised",
+    },
+    nextState: WorkflowState.DRAFT_QUALITY_PRECHECK,
+    originatingState: WorkflowState.REVISING_DRAFT,
+    jobType: JobType.REVISE_DRAFT,
+    // Reads the latest `drafts` output + review_feedback, same lineage scope
+    // decision as ConflictDetector/ReportTypeAdvisor/DraftGenerator/
+    // DraftQualityPrecheck -- no new AiOutputInputType.
+    inputs: [],
+  },
 };
 
 function routingFor(skillName: string): SkillRouting {
