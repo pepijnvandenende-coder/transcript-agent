@@ -92,3 +92,129 @@ export function submitForValidation(workflowId: string, params: { actorId: strin
     body: JSON.stringify(params),
   });
 }
+
+export interface Conflict {
+  id: string;
+  workflowId: string;
+  aiOutputId: string;
+  description: string;
+  sourceA: string | null;
+  sourceB: string | null;
+  status: "OPEN" | "RESOLVED";
+  resolution: string | null;
+  resolvedById: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+}
+
+export function getConflicts(workflowId: string): Promise<Conflict[]> {
+  return apiFetch<Conflict[]>(`/workflows/${workflowId}/conflicts`);
+}
+
+export function explainConflict(
+  workflowId: string,
+  conflictId: string,
+  params: { actorId: string; explanation: string },
+): Promise<{ conflict: Conflict; workflow: Workflow | null }> {
+  return apiFetch(`/workflows/${workflowId}/conflicts/${conflictId}/explain`, {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+}
+
+export function restartUpload(workflowId: string, params: { actorId: string }): Promise<Workflow> {
+  return apiFetch<Workflow>(`/workflows/${workflowId}/actions/restart-upload`, {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+}
+
+export interface ReportTypeSuggestion {
+  id: string;
+  workflowId: string;
+  version: number;
+  aiOutputId: string;
+  suggestedType: string;
+  rationale: string;
+  runnerUp: string | null;
+  createdAt: string;
+}
+
+export function getReportTypeSuggestion(workflowId: string): Promise<ReportTypeSuggestion> {
+  return apiFetch<ReportTypeSuggestion>(`/workflows/${workflowId}/report-type-suggestion`);
+}
+
+export function selectReportType(workflowId: string, params: { actorId: string; reportType: string }): Promise<Workflow> {
+  return apiFetch<Workflow>(`/workflows/${workflowId}/report-type`, { method: "POST", body: JSON.stringify(params) });
+}
+
+export interface DraftSection {
+  heading: string;
+  content: string;
+}
+
+export interface DraftPrecheck {
+  id: string;
+  overallScore: number;
+  checklist: Array<{ item: string; passed: boolean }>;
+  blockingIssues: string[];
+  recommendation: string;
+  createdAt: string;
+}
+
+export interface Draft {
+  id: string;
+  workflowId: string;
+  version: number;
+  aiOutputId: string;
+  reportType: string;
+  title: string;
+  attendees: string[];
+  date: string;
+  subject: string;
+  sections: DraftSection[];
+  coverage: number | null;
+  createdAt: string;
+  precheck: DraftPrecheck | null;
+}
+
+export function getDrafts(workflowId: string): Promise<Draft[]> {
+  return apiFetch<Draft[]>(`/workflows/${workflowId}/drafts`);
+}
+
+export function getDraft(workflowId: string, version: number): Promise<Draft> {
+  return apiFetch<Draft>(`/workflows/${workflowId}/drafts/${version}`);
+}
+
+export function reviewDraft(
+  workflowId: string,
+  version: number,
+  params: { actorId: string; decision: "approve" | "request_changes"; feedback?: string },
+): Promise<Workflow> {
+  return apiFetch<Workflow>(`/workflows/${workflowId}/drafts/${version}/review`, {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+}
+
+export interface FinalReport {
+  id: string;
+  workflowId: string;
+  draftId: string;
+  aiOutputId: string;
+  title: string;
+  format: string;
+  storageRef: string;
+  createdAt: string;
+}
+
+export function getFinalReport(workflowId: string): Promise<FinalReport> {
+  return apiFetch<FinalReport>(`/workflows/${workflowId}/final-report`);
+}
+
+// Not a fetch call -- a plain URL for an <a href download> link. The backend
+// already sets Content-Disposition: attachment, so the browser handles the
+// download natively through the same Vite dev proxy every other call uses.
+export function finalReportDownloadUrl(workflowId: string): string {
+  return `/workflows/${workflowId}/final-report/download`;
+}

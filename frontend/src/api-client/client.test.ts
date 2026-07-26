@@ -3,7 +3,17 @@ import {
   ApiError,
   createUser,
   createWorkflow,
+  explainConflict,
+  finalReportDownloadUrl,
+  getConflicts,
+  getDraft,
+  getDrafts,
+  getFinalReport,
+  getReportTypeSuggestion,
   getWorkflow,
+  restartUpload,
+  reviewDraft,
+  selectReportType,
   submitForValidation,
   uploadNotes,
   uploadTranscript,
@@ -94,5 +104,93 @@ describe("api-client/client", () => {
 
     await expect(getWorkflow("missing")).rejects.toBeInstanceOf(ApiError);
     await expect(getWorkflow("missing")).rejects.toThrow("Workflow not found");
+  });
+
+  it("getConflicts issues a GET to /workflows/:id/conflicts", async () => {
+    const fetchMock = mockFetchOnce(200, [{ id: "c1", status: "OPEN" }]);
+
+    const conflicts = await getConflicts("w1");
+
+    expect(fetchMock).toHaveBeenCalledWith("/workflows/w1/conflicts", expect.anything());
+    expect(conflicts).toHaveLength(1);
+  });
+
+  it("explainConflict posts the explanation to /workflows/:id/conflicts/:conflictId/explain", async () => {
+    const fetchMock = mockFetchOnce(200, { conflict: { id: "c1", status: "RESOLVED" }, workflow: null });
+
+    await explainConflict("w1", "c1", { actorId: "u1", explanation: "clarified" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/workflows/w1/conflicts/c1/explain",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ actorId: "u1", explanation: "clarified" }) }),
+    );
+  });
+
+  it("restartUpload posts to /workflows/:id/actions/restart-upload", async () => {
+    const fetchMock = mockFetchOnce(200, { id: "w1", currentState: "TRANSCRIPT_UPLOADED" });
+
+    await restartUpload("w1", { actorId: "u1" });
+
+    expect(fetchMock).toHaveBeenCalledWith("/workflows/w1/actions/restart-upload", expect.anything());
+  });
+
+  it("getReportTypeSuggestion issues a GET to /workflows/:id/report-type-suggestion", async () => {
+    const fetchMock = mockFetchOnce(200, { suggestedType: "Thematisch gespreksverslag", runnerUp: null });
+
+    await getReportTypeSuggestion("w1");
+
+    expect(fetchMock).toHaveBeenCalledWith("/workflows/w1/report-type-suggestion", expect.anything());
+  });
+
+  it("selectReportType posts the chosen type to /workflows/:id/report-type", async () => {
+    const fetchMock = mockFetchOnce(200, { id: "w1", currentState: "GENERATING_DRAFT" });
+
+    await selectReportType("w1", { actorId: "u1", reportType: "thematic" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/workflows/w1/report-type",
+      expect.objectContaining({ body: JSON.stringify({ actorId: "u1", reportType: "thematic" }) }),
+    );
+  });
+
+  it("getDrafts issues a GET to /workflows/:id/drafts", async () => {
+    const fetchMock = mockFetchOnce(200, [{ id: "d1", version: 1 }]);
+
+    await getDrafts("w1");
+
+    expect(fetchMock).toHaveBeenCalledWith("/workflows/w1/drafts", expect.anything());
+  });
+
+  it("getDraft issues a GET to /workflows/:id/drafts/:version", async () => {
+    const fetchMock = mockFetchOnce(200, { id: "d1", version: 2 });
+
+    await getDraft("w1", 2);
+
+    expect(fetchMock).toHaveBeenCalledWith("/workflows/w1/drafts/2", expect.anything());
+  });
+
+  it("reviewDraft posts the decision to /workflows/:id/drafts/:version/review", async () => {
+    const fetchMock = mockFetchOnce(200, { id: "w1", currentState: "REVISING_DRAFT" });
+
+    await reviewDraft("w1", 1, { actorId: "u1", decision: "request_changes", feedback: "expand this" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/workflows/w1/drafts/1/review",
+      expect.objectContaining({
+        body: JSON.stringify({ actorId: "u1", decision: "request_changes", feedback: "expand this" }),
+      }),
+    );
+  });
+
+  it("getFinalReport issues a GET to /workflows/:id/final-report", async () => {
+    const fetchMock = mockFetchOnce(200, { id: "f1", format: "markdown" });
+
+    await getFinalReport("w1");
+
+    expect(fetchMock).toHaveBeenCalledWith("/workflows/w1/final-report", expect.anything());
+  });
+
+  it("finalReportDownloadUrl builds the download path without calling fetch", () => {
+    expect(finalReportDownloadUrl("w1")).toBe("/workflows/w1/final-report/download");
   });
 });

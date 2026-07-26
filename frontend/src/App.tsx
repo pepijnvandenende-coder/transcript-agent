@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { NewWorkflowPage } from "./routes/Upload/NewWorkflowPage";
-import { UploadPage } from "./routes/Upload/UploadPage";
+import { WorkflowPage } from "./routes/WorkflowPage";
 import { useCurrentUser } from "./state/currentUser";
 
 // A one-time "who are you?" prompt, gating everything else -- see
@@ -56,7 +56,7 @@ export function App() {
   return (
     <Routes>
       <Route path="/" element={<NewWorkflowPage currentUserId={user.id} />} />
-      <Route path="/workflows/:id" element={<UploadPage currentUserId={user.id} />} />
+      <Route path="/workflows/:id" element={<WorkflowPage currentUserId={user.id} />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
