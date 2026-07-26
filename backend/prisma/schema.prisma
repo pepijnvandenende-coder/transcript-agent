@@ -135,6 +135,7 @@ model Workflow {
   merges           Merge[]
   conflicts        Conflict[]
   reportTypeSuggestions ReportTypeSuggestion[]
+  drafts                Draft[]
 
   @@map("workflows")
 }
@@ -234,6 +235,7 @@ model AiOutput {
   merges           Merge[]
   conflicts        Conflict[]
   reportTypeSuggestions ReportTypeSuggestion[]
+  drafts                Draft[]
 
   @@map("ai_outputs")
 }
@@ -373,6 +375,53 @@ model ReportTypeSuggestion {
 
   @@unique([workflowId, version])
   @@map("report_type_suggestions")
+}
+
+// Phase 6: catalog of available report generation policies. Stores only
+// metadata used for lookup/validation (English columns, per the codebase's
+// English-only convention) -- the actual Dutch prompt instructions live in
+// versioned files under src/ai/prompts/reportTypes/, referenced by
+// `promptRef`, not in this table. Adding a new report type is one row here
+// plus one prompt file -- no code changes to draftGenerator.ts or its runner.
+model ReportTypePolicy {
+  key              String   @id
+  displayName      String   @map("display_name")
+  language         String   @default("nl")
+  promptVersion    String   @map("prompt_version")
+  promptRef        String   @map("prompt_ref")
+  requiredSections Json     @map("required_sections")
+  optionalSections Json     @map("optional_sections")
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@map("report_type_policies")
+}
+
+// Versioned, insert-only DraftGenerator output (Phase 6) -- one row per
+// schema-valid run, mirroring Merge/ReportTypeSuggestion. Written by
+// jobs/runners/draftGenerationRunner.ts, not the gateway. `sections` holds
+// only the long-form Dutch content sections (Samenvatting, Notulen, ...);
+// header metadata (title/attendees/date/subject) is modeled as its own
+// fields since it's structurally different from prose sections.
+model Draft {
+  id           String   @id @default(uuid())
+  workflowId   String   @map("workflow_id")
+  workflow     Workflow @relation(fields: [workflowId], references: [id])
+  version      Int
+  aiOutputId   String   @map("ai_output_id")
+  aiOutput     AiOutput @relation(fields: [aiOutputId], references: [id])
+  reportType   String   @map("report_type")
+  title        String
+  attendees    Json
+  date         String
+  subject      String
+  sections     Json
+  coverage     Float?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@unique([workflowId, version])
+  @@map("drafts")
 }
 
 model ApprovalPolicy {

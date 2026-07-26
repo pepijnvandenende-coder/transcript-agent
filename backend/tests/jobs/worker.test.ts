@@ -4,6 +4,7 @@ import path from "node:path";
 import { ActorType, JobStatus, JobType, PolicyType } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { retryApprovalRequest } from "../../src/approval/gateway";
+import { selectReportType } from "../../src/approval/reportTypeSelection";
 import { env } from "../../src/config/env";
 import { enqueue } from "../../src/jobs/queue";
 import { processNextJob } from "../../src/jobs/worker";
@@ -18,6 +19,7 @@ const SKILL_NAME = "TranscriptQualityChecker";
 const MERGER_SKILL_NAME = "Merger";
 const CONFLICT_DETECTOR_SKILL_NAME = "ConflictDetector";
 const REPORT_TYPE_ADVISOR_SKILL_NAME = "ReportTypeAdvisor";
+const DRAFT_GENERATOR_SKILL_NAME = "DraftGenerator";
 
 // claimNextQueuedJob() claims the globally oldest QUEUED job across every
 // workflow, not just this test's own -- and other test files (e.g.
@@ -67,6 +69,37 @@ describe("jobs: queue + processNextJob (no daemon required)", () => {
       update: { policyType: PolicyType.MANDATORY, confidenceThreshold: null },
       create: { skillName: REPORT_TYPE_ADVISOR_SKILL_NAME, policyType: PolicyType.MANDATORY },
     });
+    await prisma.approvalPolicy.upsert({
+      where: { skillName: DRAFT_GENERATOR_SKILL_NAME },
+      update: { policyType: PolicyType.MANDATORY, confidenceThreshold: null },
+      create: { skillName: DRAFT_GENERATOR_SKILL_NAME, policyType: PolicyType.MANDATORY },
+    });
+    await prisma.reportTypePolicy.upsert({
+      where: { key: "thematic" },
+      update: {},
+      create: {
+        key: "thematic",
+        displayName: "Thematisch gespreksverslag",
+        language: "nl",
+        promptVersion: "v1",
+        promptRef: "thematic.md",
+        requiredSections: ["Samenvatting", "Notulen"],
+        optionalSections: [],
+      },
+    });
+    await prisma.reportTypePolicy.upsert({
+      where: { key: "qa" },
+      update: {},
+      create: {
+        key: "qa",
+        displayName: "Vraag & antwoord gespreksverslag",
+        language: "nl",
+        promptVersion: "v1",
+        promptRef: "qa.md",
+        requiredSections: ["Samenvatting", "Notulen"],
+        optionalSections: [],
+      },
+    });
 
     const user = await prisma.user.create({
       data: { name: "Worker Test User", email: `worker-test-${randomUUID()}@example.com`, role: "reviewer" },
@@ -99,6 +132,7 @@ describe("jobs: queue + processNextJob (no daemon required)", () => {
     await prisma.aiOutputInput.deleteMany({ where: { aiOutput: { workflowId } } });
     await prisma.conflict.deleteMany({ where: { workflowId } });
     await prisma.reportTypeSuggestion.deleteMany({ where: { workflowId } });
+    await prisma.draft.deleteMany({ where: { workflowId } });
     await prisma.aiOutput.deleteMany({ where: { workflowId } });
     await prisma.job.deleteMany({ where: { workflowId } });
     await prisma.transcript.deleteMany({ where: { workflowId } });
@@ -200,11 +234,42 @@ describe("jobs: queue + processNextJob (no daemon required)", () => {
     expect(suggestion.aiOutputId).toBe(completed.resultAiOutputId);
   });
 
+  it("selecting a report type auto-enqueued a GENERATE_DRAFT job, which processNextJob also completes", async () => {
+    // The real flow: approval/reportTypeSelection.ts's selectReportType()
+    // validates against the catalog, sets workflows.reportType to the
+    // resolved key, and (via enqueueForStateEntry) auto-starts
+    // DraftGenerator's job the same way every other PROCESSING-state entry
+    // does.
+    const updated = await selectReportType({ workflowId, actorId: userId, reportType: "thematic" });
+    expect(updated.currentState).toBe(WorkflowState.GENERATING_DRAFT);
+    expect(updated.reportType).toBe("thematic");
+
+    const queuedGenerateDraft = await prisma.job.findFirstOrThrow({
+      where: { workflowId, jobType: JobType.GENERATE_DRAFT },
+      orderBy: { createdAt: "desc" },
+    });
+
+    await processUntilSettled(queuedGenerateDraft.id);
+
+    const completed = await prisma.job.findUniqueOrThrow({ where: { id: queuedGenerateDraft.id } });
+    expect(completed.status).toBe(JobStatus.SUCCEEDED);
+    expect(completed.resultAiOutputId).not.toBeNull();
+
+    const workflow = await prisma.workflow.findUniqueOrThrow({ where: { id: workflowId } });
+    expect(workflow.currentState).toBe(WorkflowState.DRAFT_QUALITY_PRECHECK);
+
+    const draft = await prisma.draft.findFirstOrThrow({ where: { workflowId } });
+    expect(draft.version).toBe(1);
+    expect(draft.aiOutputId).toBe(completed.resultAiOutputId);
+    const sections = draft.sections as unknown as Array<{ heading: string }>;
+    expect(sections.map((s) => s.heading)).toEqual(expect.arrayContaining(["Samenvatting", "Notulen"]));
+  });
+
   it("marks a job FAILED when no runner is registered for its job_type", async () => {
-    // SUGGEST_REPORT_TYPE is now registered too (Phase 5) -- GENERATE_DRAFT
+    // GENERATE_DRAFT is now registered too (Phase 6) -- DRAFT_QUALITY_PRECHECK
     // is the next still-unregistered job_type.
     const job = await prisma.job.create({
-      data: { workflowId, jobType: JobType.GENERATE_DRAFT, status: JobStatus.QUEUED },
+      data: { workflowId, jobType: JobType.DRAFT_QUALITY_PRECHECK, status: JobStatus.QUEUED },
     });
 
     await processUntilSettled(job.id);

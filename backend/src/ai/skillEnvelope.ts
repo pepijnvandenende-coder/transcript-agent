@@ -71,3 +71,30 @@ export const ReportTypeAdvisorEnvelopeSchema = SkillEnvelopeSchema.extend({
   result: ReportTypeResultSchema,
 });
 export type ReportTypeAdvisorEnvelope = z.infer<typeof ReportTypeAdvisorEnvelopeSchema>;
+
+// Phase 6: DraftGenerator's result. `sections` holds only the long-form
+// Dutch content sections (Samenvatting, Notulen, ...) -- header metadata
+// (title/attendees/date/subject) are their own fields, per the structure
+// shared by both report_type_policies prompts (see
+// src/ai/prompts/reportTypes/{thematic,qa}.md).
+export const DraftSectionSchema = z.object({
+  heading: z.string(),
+  content: z.string(),
+});
+export type DraftSection = z.infer<typeof DraftSectionSchema>;
+
+export const DraftGeneratorResultSchema = z.object({
+  report_type: z.string(),
+  title: z.string(),
+  attendees: z.array(z.string()),
+  date: z.string(),
+  subject: z.string(),
+  sections: z.array(DraftSectionSchema),
+  coverage: z.number().min(0).max(1).optional(),
+});
+export type DraftGeneratorResult = z.infer<typeof DraftGeneratorResultSchema>;
+
+export const DraftGeneratorEnvelopeSchema = SkillEnvelopeSchema.extend({
+  result: DraftGeneratorResultSchema,
+});
+export type DraftGeneratorEnvelope = z.infer<typeof DraftGeneratorEnvelopeSchema>;

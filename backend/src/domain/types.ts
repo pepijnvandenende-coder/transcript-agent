@@ -135,3 +135,14 @@ export class NotAwaitingReportTypeSelectionError extends Error {
     this.name = "NotAwaitingReportTypeSelectionError";
   }
 }
+
+// Phase 6: raised by POST /workflows/:id/report-type when the submitted
+// value doesn't match any active report_type_policies row (by key or Dutch
+// displayName) -- selection is tightened to the catalog rather than
+// accepting freeform text, per the Phase 6 decision.
+export class UnknownReportTypeError extends Error {
+  constructor(public readonly submittedValue: string) {
+    super(`"${submittedValue}" does not match any active report type policy`);
+    this.name = "UnknownReportTypeError";
+  }
+}

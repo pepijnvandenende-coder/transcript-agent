@@ -53,6 +53,82 @@ async function main() {
       policyType: PolicyType.MANDATORY,
     },
   });
+
+  // Phase 6: DraftGenerator is MANDATORY unconditionally, same shape as
+  // ReportTypeAdvisor -- see approval/gateway.ts's mandatoryReview routing.
+  await prisma.approvalPolicy.upsert({
+    where: { skillName: "DraftGenerator" },
+    update: { policyType: PolicyType.MANDATORY, confidenceThreshold: null },
+    create: {
+      skillName: "DraftGenerator",
+      policyType: PolicyType.MANDATORY,
+    },
+  });
+
+  // Phase 6: the report generation policy catalog. Metadata only (English
+  // columns) -- the actual Dutch prompt instructions live in
+  // src/ai/prompts/reportTypes/{key}.md, referenced by promptRef. Adding a
+  // third report type later is one more upsert here plus one prompt file --
+  // no code changes to draftGenerator.ts or its runner.
+  await prisma.reportTypePolicy.upsert({
+    where: { key: "thematic" },
+    update: {
+      displayName: "Thematisch gespreksverslag",
+      language: "nl",
+      promptVersion: "v1",
+      promptRef: "thematic.md",
+      requiredSections: ["Samenvatting", "Notulen"],
+      optionalSections: [
+        "Acties en vervolgstappen",
+        "Openstaande vragen / onduidelijkheden",
+        "Bijlagen/verwijzingen",
+      ],
+      isActive: true,
+    },
+    create: {
+      key: "thematic",
+      displayName: "Thematisch gespreksverslag",
+      language: "nl",
+      promptVersion: "v1",
+      promptRef: "thematic.md",
+      requiredSections: ["Samenvatting", "Notulen"],
+      optionalSections: [
+        "Acties en vervolgstappen",
+        "Openstaande vragen / onduidelijkheden",
+        "Bijlagen/verwijzingen",
+      ],
+    },
+  });
+
+  await prisma.reportTypePolicy.upsert({
+    where: { key: "qa" },
+    update: {
+      displayName: "Vraag & antwoord gespreksverslag",
+      language: "nl",
+      promptVersion: "v1",
+      promptRef: "qa.md",
+      requiredSections: ["Samenvatting", "Notulen"],
+      optionalSections: [
+        "Acties en vervolgstappen",
+        "Openstaande vragen / onduidelijkheden",
+        "Bijlagen/verwijzingen",
+      ],
+      isActive: true,
+    },
+    create: {
+      key: "qa",
+      displayName: "Vraag & antwoord gespreksverslag",
+      language: "nl",
+      promptVersion: "v1",
+      promptRef: "qa.md",
+      requiredSections: ["Samenvatting", "Notulen"],
+      optionalSections: [
+        "Acties en vervolgstappen",
+        "Openstaande vragen / onduidelijkheden",
+        "Bijlagen/verwijzingen",
+      ],
+    },
+  });
 }
 
 main()

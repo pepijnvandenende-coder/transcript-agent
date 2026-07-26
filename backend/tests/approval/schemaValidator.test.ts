@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import * as conflictDetector from "../../src/ai/skills/conflictDetector";
+import * as draftGenerator from "../../src/ai/skills/draftGenerator";
 import * as merger from "../../src/ai/skills/merger";
 import * as reportTypeAdvisor from "../../src/ai/skills/reportTypeAdvisor";
 import { run } from "../../src/ai/skills/transcriptQualityChecker";
@@ -56,16 +57,41 @@ describe("schemaValidator.checkSchema", () => {
     expect(result.valid).toBe(false);
   });
 
+  const reportTypeLabels = { thematicLabel: "Thematisch gespreksverslag", qaLabel: "Vraag & antwoord gespreksverslag" };
+
   it("accepts a well-formed ReportTypeAdvisor envelope", () => {
-    const envelope = reportTypeAdvisor.run("some merged content");
+    const envelope = reportTypeAdvisor.run("some merged content", reportTypeLabels);
     const result = checkSchema("ReportTypeAdvisor", envelope);
     expect(result.valid).toBe(true);
   });
 
   it("rejects a ReportTypeAdvisor envelope missing suggested_type", () => {
-    const envelope = reportTypeAdvisor.run("some merged content");
+    const envelope = reportTypeAdvisor.run("some merged content", reportTypeLabels);
     const malformed = { ...envelope, result: { rationale: envelope.result.rationale } };
     const result = checkSchema("ReportTypeAdvisor", malformed);
+    expect(result.valid).toBe(false);
+  });
+
+  it("accepts a well-formed DraftGenerator envelope", () => {
+    const envelope = draftGenerator.run({
+      mergedContent: "some merged content",
+      policyKey: "thematic",
+      subject: "Test Workflow",
+      date: "2026-01-01",
+    });
+    const result = checkSchema("DraftGenerator", envelope);
+    expect(result.valid).toBe(true);
+  });
+
+  it("rejects a DraftGenerator envelope missing sections", () => {
+    const envelope = draftGenerator.run({
+      mergedContent: "some merged content",
+      policyKey: "thematic",
+      subject: "Test Workflow",
+      date: "2026-01-01",
+    });
+    const malformed = { ...envelope, result: { ...envelope.result, sections: "not an array" } };
+    const result = checkSchema("DraftGenerator", malformed);
     expect(result.valid).toBe(false);
   });
 });

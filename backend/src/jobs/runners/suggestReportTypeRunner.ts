@@ -1,6 +1,7 @@
 import { handleSkillOutput } from "../../approval/gateway";
 import * as reportTypeAdvisor from "../../ai/skills/reportTypeAdvisor";
 import { findLatestMerge } from "../../persistence/repositories/mergeRepository";
+import { findPolicyByKey } from "../../persistence/repositories/reportTypePolicyRepository";
 import { createReportTypeSuggestion } from "../../persistence/repositories/reportTypeSuggestionRepository";
 import type { JobRunnerInput, JobRunnerResult } from "../worker";
 
@@ -17,7 +18,16 @@ export async function runSuggestReportTypeJob(job: JobRunnerInput): Promise<JobR
 
   const sections = (merge.mergedSections as unknown as Array<{ content: string }>) ?? [];
   const mergedContent = sections.map((section) => section.content).join("\n");
-  const envelope = reportTypeAdvisor.run(mergedContent);
+
+  // Phase 6 retrofit: the skill itself stays DB-free (pure function) -- this
+  // runner fetches the catalog's own Dutch display names and passes them in,
+  // so the suggestion is always catalog-backed even if the catalog's wording
+  // changes later.
+  const [thematicPolicy, qaPolicy] = await Promise.all([findPolicyByKey("thematic"), findPolicyByKey("qa")]);
+  const envelope = reportTypeAdvisor.run(mergedContent, {
+    thematicLabel: thematicPolicy?.displayName ?? "thematic",
+    qaLabel: qaPolicy?.displayName ?? "qa",
+  });
 
   const { aiOutputId } = await handleSkillOutput({
     workflowId: job.workflowId,

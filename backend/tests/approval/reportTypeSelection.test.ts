@@ -9,7 +9,7 @@ import type {
 } from "../../src/ai/skillEnvelope";
 import { handleSkillOutput } from "../../src/approval/gateway";
 import { selectReportType } from "../../src/approval/reportTypeSelection";
-import { NotAwaitingReportTypeSelectionError } from "../../src/domain/types";
+import { NotAwaitingReportTypeSelectionError, UnknownReportTypeError } from "../../src/domain/types";
 import { createReportTypeSuggestion } from "../../src/persistence/repositories/reportTypeSuggestionRepository";
 import { prisma } from "../../src/persistence/prismaClient";
 import * as engine from "../../src/workflow/engine";
@@ -96,6 +96,37 @@ describe("approval/reportTypeSelection", () => {
       update: { policyType: PolicyType.MANDATORY, confidenceThreshold: null },
       create: { skillName: REPORT_TYPE_ADVISOR_SKILL_NAME, policyType: PolicyType.MANDATORY },
     });
+    await prisma.approvalPolicy.upsert({
+      where: { skillName: "DraftGenerator" },
+      update: { policyType: PolicyType.MANDATORY, confidenceThreshold: null },
+      create: { skillName: "DraftGenerator", policyType: PolicyType.MANDATORY },
+    });
+    await prisma.reportTypePolicy.upsert({
+      where: { key: "thematic" },
+      update: {},
+      create: {
+        key: "thematic",
+        displayName: "Thematisch gespreksverslag",
+        language: "nl",
+        promptVersion: "v1",
+        promptRef: "thematic.md",
+        requiredSections: ["Samenvatting", "Notulen"],
+        optionalSections: [],
+      },
+    });
+    await prisma.reportTypePolicy.upsert({
+      where: { key: "qa" },
+      update: {},
+      create: {
+        key: "qa",
+        displayName: "Vraag & antwoord gespreksverslag",
+        language: "nl",
+        promptVersion: "v1",
+        promptRef: "qa.md",
+        requiredSections: ["Samenvatting", "Notulen"],
+        optionalSections: [],
+      },
+    });
 
     const user = await prisma.user.create({
       data: {
@@ -115,6 +146,7 @@ describe("approval/reportTypeSelection", () => {
     await prisma.job.deleteMany({ where: { workflow: { createdById: userId } } });
     await prisma.aiOutputInput.deleteMany({ where: { aiOutput: { workflow: { createdById: userId } } } });
     await prisma.reportTypeSuggestion.deleteMany({ where: { workflow: { createdById: userId } } });
+    await prisma.draft.deleteMany({ where: { workflow: { createdById: userId } } });
     await prisma.conflict.deleteMany({ where: { workflow: { createdById: userId } } });
     await prisma.merge.deleteMany({ where: { workflow: { createdById: userId } } });
     await prisma.aiOutput.deleteMany({ where: { workflow: { createdById: userId } } });
@@ -174,15 +206,20 @@ describe("approval/reportTypeSelection", () => {
     return { workflowId: workflow.id, aiOutputId };
   }
 
-  it("sets workflows.reportType, marks the ai_output HUMAN_APPROVED, and advances to GENERATING_DRAFT", async () => {
+  it("sets workflows.reportType (normalized to the policy key), marks the ai_output HUMAN_APPROVED, and advances to GENERATING_DRAFT", async () => {
     const { workflowId, aiOutputId } = await workflowAtAwaitingReportTypeSelection("Report Type Selection Success");
 
-    const updated = await selectReportType({ workflowId, actorId: userId, reportType: "Incident Report" });
+    // Submits the Dutch displayName -- resolved and stored as the English key.
+    const updated = await selectReportType({
+      workflowId,
+      actorId: userId,
+      reportType: "Thematisch gespreksverslag",
+    });
     expect(updated.currentState).toBe(WorkflowState.GENERATING_DRAFT);
-    expect(updated.reportType).toBe("Incident Report");
+    expect(updated.reportType).toBe("thematic");
 
     const reloadedWorkflow = await prisma.workflow.findUniqueOrThrow({ where: { id: workflowId } });
-    expect(reloadedWorkflow.reportType).toBe("Incident Report");
+    expect(reloadedWorkflow.reportType).toBe("thematic");
 
     const aiOutput = await prisma.aiOutput.findUniqueOrThrow({ where: { id: aiOutputId } });
     expect(aiOutput.approvalStatus).toBe("HUMAN_APPROVED");
@@ -193,18 +230,26 @@ describe("approval/reportTypeSelection", () => {
     expect(suggestion.suggestedType).toBe("Standard Audit Summary");
   });
 
-  it("allows a freeform report type that differs from the AI's suggestion (no automatic selection)", async () => {
-    const { workflowId } = await workflowAtAwaitingReportTypeSelection("Report Type Selection Override");
+  it("also accepts the English key, case-insensitively", async () => {
+    const { workflowId } = await workflowAtAwaitingReportTypeSelection("Report Type Selection By Key");
 
-    const updated = await selectReportType({ workflowId, actorId: userId, reportType: "Custom Report Type" });
-    expect(updated.reportType).toBe("Custom Report Type");
+    const updated = await selectReportType({ workflowId, actorId: userId, reportType: "QA" });
+    expect(updated.reportType).toBe("qa");
+  });
+
+  it("rejects a report type that doesn't match any catalog entry (Phase 6: no more freeform acceptance)", async () => {
+    const { workflowId } = await workflowAtAwaitingReportTypeSelection("Report Type Selection Unknown Type");
+
+    await expect(
+      selectReportType({ workflowId, actorId: userId, reportType: "Custom Report Type" }),
+    ).rejects.toBeInstanceOf(UnknownReportTypeError);
   });
 
   it("rejects selection when the workflow is not at AWAITING_REPORT_TYPE_SELECTION", async () => {
     const workflow = await engine.createWorkflow({ title: "Report Type Selection Not Awaiting", createdById: userId });
 
     await expect(
-      selectReportType({ workflowId: workflow.id, actorId: userId, reportType: "Anything" }),
+      selectReportType({ workflowId: workflow.id, actorId: userId, reportType: "thematic" }),
     ).rejects.toBeInstanceOf(NotAwaitingReportTypeSelectionError);
   });
 });

@@ -97,6 +97,32 @@ describe("Phase 5 report-type API", () => {
       update: { policyType: PolicyType.MANDATORY, confidenceThreshold: null },
       create: { skillName: REPORT_TYPE_ADVISOR_SKILL_NAME, policyType: PolicyType.MANDATORY },
     });
+    await prisma.reportTypePolicy.upsert({
+      where: { key: "thematic" },
+      update: {},
+      create: {
+        key: "thematic",
+        displayName: "Thematisch gespreksverslag",
+        language: "nl",
+        promptVersion: "v1",
+        promptRef: "thematic.md",
+        requiredSections: ["Samenvatting", "Notulen"],
+        optionalSections: [],
+      },
+    });
+    await prisma.reportTypePolicy.upsert({
+      where: { key: "qa" },
+      update: {},
+      create: {
+        key: "qa",
+        displayName: "Vraag & antwoord gespreksverslag",
+        language: "nl",
+        promptVersion: "v1",
+        promptRef: "qa.md",
+        requiredSections: ["Samenvatting", "Notulen"],
+        optionalSections: [],
+      },
+    });
 
     const user = await prisma.user.create({
       data: {
@@ -122,6 +148,7 @@ describe("Phase 5 report-type API", () => {
     await prisma.job.deleteMany({ where: { workflow: { createdById: userId } } });
     await prisma.aiOutputInput.deleteMany({ where: { aiOutput: { workflow: { createdById: userId } } } });
     await prisma.reportTypeSuggestion.deleteMany({ where: { workflow: { createdById: userId } } });
+    await prisma.draft.deleteMany({ where: { workflow: { createdById: userId } } });
     await prisma.conflict.deleteMany({ where: { workflow: { createdById: userId } } });
     await prisma.merge.deleteMany({ where: { workflow: { createdById: userId } } });
     await prisma.aiOutput.deleteMany({ where: { workflow: { createdById: userId } } });
@@ -203,21 +230,36 @@ describe("Phase 5 report-type API", () => {
     expect(response.status).toBe(404);
   });
 
-  it("POST /workflows/:id/report-type advances the workflow to GENERATING_DRAFT and sets reportType", async () => {
+  it("POST /workflows/:id/report-type accepts the Dutch displayName, advances to GENERATING_DRAFT, and normalizes reportType to the policy key", async () => {
     const workflowId = await workflowAtAwaitingReportTypeSelection("Report Type Route Select");
 
     const response = await fetch(`${baseUrl}/workflows/${workflowId}/report-type`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ actorId: userId, reportType: "Incident Report" }),
+      body: JSON.stringify({ actorId: userId, reportType: "Thematisch gespreksverslag" }),
     });
     expect(response.status).toBe(200);
     const body = (await response.json()) as { currentState: string; reportType: string };
     expect(body.currentState).toBe(WorkflowState.GENERATING_DRAFT);
-    expect(body.reportType).toBe("Incident Report");
+    // Normalized to the catalog's English key, not the submitted Dutch text --
+    // draftGenerationRunner.ts looks the policy up by exact key.
+    expect(body.reportType).toBe("thematic");
 
     const reloaded = await prisma.workflow.findUniqueOrThrow({ where: { id: workflowId } });
-    expect(reloaded.reportType).toBe("Incident Report");
+    expect(reloaded.reportType).toBe("thematic");
+  });
+
+  it("also accepts the English key", async () => {
+    const workflowId = await workflowAtAwaitingReportTypeSelection("Report Type Route Select By Key");
+
+    const response = await fetch(`${baseUrl}/workflows/${workflowId}/report-type`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: userId, reportType: "qa" }),
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { reportType: string };
+    expect(body.reportType).toBe("qa");
   });
 
   it("rejects selection when the workflow is not at AWAITING_REPORT_TYPE_SELECTION", async () => {
@@ -226,9 +268,20 @@ describe("Phase 5 report-type API", () => {
     const response = await fetch(`${baseUrl}/workflows/${workflow.id}/report-type`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ actorId: userId, reportType: "Anything" }),
+      body: JSON.stringify({ actorId: userId, reportType: "thematic" }),
     });
     expect(response.status).toBe(409);
+  });
+
+  it("rejects a report type that doesn't match any catalog entry", async () => {
+    const workflowId = await workflowAtAwaitingReportTypeSelection("Report Type Route Unknown Type");
+
+    const response = await fetch(`${baseUrl}/workflows/${workflowId}/report-type`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: userId, reportType: "Something Made Up" }),
+    });
+    expect(response.status).toBe(400);
   });
 
   it("rejects an empty reportType", async () => {

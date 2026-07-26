@@ -22,7 +22,7 @@ import * as engine from "../workflow/engine";
 import { WorkflowState } from "../workflow/states";
 import { computeConfidence } from "./confidenceScorer";
 import { getMaxRetries, resolvePolicy } from "./policyResolver";
-import { checkSchema } from "./schemaValidator";
+import { checkSchema, type SchemaCheckResult } from "./schemaValidator";
 
 // Per-skill wiring the routing logic below needs: the system_event names
 // transitions.ts declares for this step's outcomes, the user_actions
@@ -130,6 +130,22 @@ const SKILL_ROUTING: Record<string, SkillRouting> = {
     // made for ConflictDetector -- no new AiOutputInputType.
     inputs: [],
   },
+  DraftGenerator: {
+    events: {
+      // Unused (mandatoryReview short-circuits first) -- same placeholder
+      // pattern as ReportTypeAdvisor's entry above.
+      autoApproved: "draft_generated",
+      lowConfidence: "draft_generated",
+      schemaInvalid: "draft_generated",
+      mandatoryReview: "draft_generated",
+    },
+    nextState: WorkflowState.DRAFT_QUALITY_PRECHECK,
+    originatingState: WorkflowState.GENERATING_DRAFT,
+    jobType: JobType.GENERATE_DRAFT,
+    // Reads the latest `merges` output, same lineage scope decision as
+    // ConflictDetector/ReportTypeAdvisor -- no new AiOutputInputType.
+    inputs: [],
+  },
 };
 
 function routingFor(skillName: string): SkillRouting {
@@ -194,6 +210,14 @@ export async function handleSkillOutput(params: {
   // ai_output_inputs lineage. Optional -- not every skill/runner populates it
   // yet (see mergeRunner.ts vs validateTranscriptRunner.ts).
   inputs?: Array<{ inputType: AiOutputInputType; inputId: string; inputVersion: number }>;
+  // Phase 6: an optional extra check run only when the zod schema check
+  // already passed -- e.g. draftGenerationRunner.ts's
+  // reportStructureValidator.ts call, which needs the resolved
+  // ReportTypePolicy's requiredSections (not available to the generic,
+  // skill-agnostic checkSchema() below). A failure here is folded into the
+  // exact same INVALID/schema-invalid handling as a zod failure, so gateway.ts
+  // never needs to know what the check actually validated.
+  additionalValidation?: () => SchemaCheckResult;
 }): Promise<{ aiOutputId: string }> {
   const routing = routingFor(params.envelope.skill);
 
@@ -204,8 +228,11 @@ export async function handleSkillOutput(params: {
   }
 
   const schemaCheck = checkSchema(params.envelope.skill, params.envelope);
+  const validationResult: SchemaCheckResult = schemaCheck.valid
+    ? (params.additionalValidation?.() ?? { valid: true })
+    : schemaCheck;
 
-  if (!schemaCheck.valid) {
+  if (!validationResult.valid) {
     const aiOutput = await createAiOutput({
       jobId: params.jobId,
       workflowId: params.workflowId,
@@ -214,7 +241,7 @@ export async function handleSkillOutput(params: {
       schemaVersion: params.schemaVersion,
       rawOutput: params.envelope as unknown as Prisma.InputJsonValue,
       validationStatus: ValidationStatus.INVALID,
-      validationErrors: schemaCheck.errors as Prisma.InputJsonValue,
+      validationErrors: validationResult.errors as Prisma.InputJsonValue,
       attemptNumber,
       retryOfAiOutputId: params.retryOfAiOutputId,
       retryMode: params.retryMode,

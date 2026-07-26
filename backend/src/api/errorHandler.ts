@@ -10,6 +10,7 @@ import {
   NotAtCheckpointError,
   NotAtConflictReviewError,
   NotAwaitingReportTypeSelectionError,
+  UnknownReportTypeError,
 } from "../domain/types";
 import { PathTraversalError } from "../storage/localFilesystemStorage";
 
@@ -33,7 +34,7 @@ export function apiErrorHandler(err: unknown, _req: Request, res: Response, _nex
     res.status(404).json({ error: err.message });
     return;
   }
-  if (err instanceof InvalidRetryInputError) {
+  if (err instanceof InvalidRetryInputError || err instanceof UnknownReportTypeError) {
     res.status(400).json({ error: err.message });
     return;
   }

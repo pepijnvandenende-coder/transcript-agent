@@ -30,10 +30,13 @@ reportTypeRouter.get("/:id/report-type-suggestion", async (req, res, next) => {
 
 const selectReportTypeSchema = z.object({ actorId: z.string().uuid(), reportType: z.string().min(1) });
 
-// POST /workflows/:id/report-type -- Phase 5: the human's explicit report
-// type choice (freeform -- no taxonomy to validate against). See
+// POST /workflows/:id/report-type -- the human's explicit report type
+// choice. Phase 6: tightened from Phase 5's freeform acceptance -- the
+// submitted value (English key or Dutch displayName) must resolve against
+// the report_type_policies catalog; see
 // approval/reportTypeSelection.ts's selectReportType for the full semantics
-// (only valid from AWAITING_REPORT_TYPE_SELECTION, advances to GENERATING_DRAFT).
+// (only valid from AWAITING_REPORT_TYPE_SELECTION, advances to GENERATING_DRAFT,
+// 400s via UnknownReportTypeError for an unrecognized value).
 reportTypeRouter.post("/:id/report-type", async (req, res, next) => {
   try {
     const body = selectReportTypeSchema.parse(req.body);

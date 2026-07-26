@@ -3,6 +3,7 @@ import { ActorType, JobStatus, JobType, PolicyType, RetryMode } from "@prisma/cl
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type {
   ConflictDetectorEnvelope,
+  DraftGeneratorEnvelope,
   MergerEnvelope,
   ReportTypeAdvisorEnvelope,
   TranscriptQualityEnvelope,
@@ -23,6 +24,7 @@ const SKILL_NAME = "TranscriptQualityChecker";
 const MERGER_SKILL_NAME = "Merger";
 const CONFLICT_DETECTOR_SKILL_NAME = "ConflictDetector";
 const REPORT_TYPE_ADVISOR_SKILL_NAME = "ReportTypeAdvisor";
+const DRAFT_GENERATOR_SKILL_NAME = "DraftGenerator";
 
 function envelope(
   overrides: { confidence?: number; sufficient?: boolean; issues?: string[] } = {},
@@ -79,6 +81,29 @@ function reportTypeAdvisorEnvelope(overrides: { confidence?: number } = {}): Rep
   };
 }
 
+function draftGeneratorEnvelope(overrides: { confidence?: number } = {}): DraftGeneratorEnvelope {
+  const { confidence = 0.8 } = overrides;
+  return {
+    skill: DRAFT_GENERATOR_SKILL_NAME,
+    schema_version: "1.0.0",
+    confidence,
+    rationale: "test envelope",
+    flags: [],
+    result: {
+      report_type: "thematic",
+      title: "Gespreksverslag Test",
+      attendees: [],
+      date: "2026-01-01",
+      subject: "Test",
+      sections: [
+        { heading: "Samenvatting", content: "x" },
+        { heading: "Notulen", content: "y" },
+      ],
+      coverage: 0.7,
+    },
+  };
+}
+
 describe("approval/gateway", () => {
   let userId: string;
 
@@ -103,6 +128,11 @@ describe("approval/gateway", () => {
       update: { policyType: PolicyType.MANDATORY, confidenceThreshold: null },
       create: { skillName: REPORT_TYPE_ADVISOR_SKILL_NAME, policyType: PolicyType.MANDATORY },
     });
+    await prisma.approvalPolicy.upsert({
+      where: { skillName: DRAFT_GENERATOR_SKILL_NAME },
+      update: { policyType: PolicyType.MANDATORY, confidenceThreshold: null },
+      create: { skillName: DRAFT_GENERATOR_SKILL_NAME, policyType: PolicyType.MANDATORY },
+    });
 
     const user = await prisma.user.create({
       data: { name: "Gateway Test User", email: `gateway-test-${randomUUID()}@example.com`, role: "reviewer" },
@@ -120,6 +150,7 @@ describe("approval/gateway", () => {
     await prisma.merge.deleteMany({ where: { workflow: { createdById: userId } } });
     await prisma.conflict.deleteMany({ where: { workflow: { createdById: userId } } });
     await prisma.reportTypeSuggestion.deleteMany({ where: { workflow: { createdById: userId } } });
+    await prisma.draft.deleteMany({ where: { workflow: { createdById: userId } } });
     await prisma.aiOutput.deleteMany({ where: { workflow: { createdById: userId } } });
     await prisma.transcript.deleteMany({ where: { workflow: { createdById: userId } } });
     await prisma.note.deleteMany({ where: { workflow: { createdById: userId } } });
@@ -504,6 +535,124 @@ describe("approval/gateway", () => {
 
       const openRequest = await prisma.approvalRequest.findFirst({ where: { aiOutputId: aiOutput.id } });
       expect(openRequest).toBeNull();
+    });
+  });
+
+  describe("DraftGenerator routing (GENERATING_DRAFT -> DRAFT_QUALITY_PRECHECK)", () => {
+    async function workflowAtGeneratingDraft(title: string) {
+      const workflow = await workflowAtValidating(title);
+      await handleSkillOutput({
+        workflowId: workflow.id,
+        envelope: envelope({ confidence: 0.95 }),
+        promptVersion: "stub-1",
+        schemaVersion: "1.0.0",
+      });
+      await handleSkillOutput({
+        workflowId: workflow.id,
+        envelope: mergerEnvelope({ confidence: 0.95 }),
+        promptVersion: "stub-1",
+        schemaVersion: "1.0.0",
+      });
+      await handleSkillOutput({
+        workflowId: workflow.id,
+        envelope: conflictDetectorEnvelope({ confidence: 0.9 }),
+        promptVersion: "stub-1",
+        schemaVersion: "1.0.0",
+      });
+      await handleSkillOutput({
+        workflowId: workflow.id,
+        envelope: reportTypeAdvisorEnvelope({ confidence: 0.85 }),
+        promptVersion: "stub-1",
+        schemaVersion: "1.0.0",
+      });
+      // select_report_type is a plain user_action (like submit_for_validation
+      // above) -- reached directly via engine.transition() here since these
+      // tests exercise handleSkillOutput() directly, bypassing
+      // approval/reportTypeSelection.ts's catalog validation entirely.
+      await engine.transition({
+        workflowId: workflow.id,
+        trigger: { kind: "user_action", action: "select_report_type" },
+        actor: { actorType: ActorType.USER, actorId: userId },
+      });
+      return prisma.workflow.findUniqueOrThrow({ where: { id: workflow.id } });
+    }
+
+    it("always transitions via draft_generated regardless of confidence -- no low/auto split, no auto-approval", async () => {
+      const workflow = await workflowAtGeneratingDraft("Gateway DraftGenerator Low Confidence Still Proceeds");
+
+      await handleSkillOutput({
+        workflowId: workflow.id,
+        envelope: draftGeneratorEnvelope({ confidence: 0.01 }),
+        promptVersion: "stub-1",
+        schemaVersion: "1.0.0",
+      });
+
+      const reloaded = await prisma.workflow.findUniqueOrThrow({ where: { id: workflow.id } });
+      expect(reloaded.currentState).toBe(WorkflowState.DRAFT_QUALITY_PRECHECK);
+
+      const aiOutput = await prisma.aiOutput.findFirstOrThrow({
+        where: { workflowId: workflow.id, skillName: DRAFT_GENERATOR_SKILL_NAME },
+      });
+      // Not auto-approved -- the (later-phase) human checkpoint at
+      // DRAFT_PENDING_REVIEW hasn't happened yet.
+      expect(aiOutput.approvalStatus).toBe("PENDING");
+
+      // No generic checkpoint episode -- DraftGenerator never opens one.
+      const openRequest = await prisma.approvalRequest.findFirst({ where: { aiOutputId: aiOutput.id } });
+      expect(openRequest).toBeNull();
+    });
+
+    it("schema-invalid output ALSO proceeds via draft_generated -- no stuck workflow, no approval_requests", async () => {
+      const workflow = await workflowAtGeneratingDraft("Gateway DraftGenerator Schema Invalid");
+
+      const invalid = { ...draftGeneratorEnvelope(), confidence: -1 };
+
+      await handleSkillOutput({
+        workflowId: workflow.id,
+        envelope: invalid,
+        promptVersion: "stub-1",
+        schemaVersion: "1.0.0",
+      });
+
+      const reloaded = await prisma.workflow.findUniqueOrThrow({ where: { id: workflow.id } });
+      expect(reloaded.currentState).toBe(WorkflowState.DRAFT_QUALITY_PRECHECK);
+
+      const aiOutput = await prisma.aiOutput.findFirstOrThrow({
+        where: { workflowId: workflow.id, skillName: DRAFT_GENERATOR_SKILL_NAME },
+      });
+      expect(aiOutput.validationStatus).toBe("INVALID");
+      expect(aiOutput.validationErrors).not.toBeNull();
+      expect(aiOutput.approvalStatus).toBe("PENDING");
+
+      const openRequest = await prisma.approvalRequest.findFirst({ where: { aiOutputId: aiOutput.id } });
+      expect(openRequest).toBeNull();
+    });
+
+    it("rejects a structurally-invalid draft (missing a required section) via additionalValidation, same as a schema failure", async () => {
+      const workflow = await workflowAtGeneratingDraft("Gateway DraftGenerator Structural Invalid");
+
+      const missingNotulen = {
+        ...draftGeneratorEnvelope(),
+        result: { ...draftGeneratorEnvelope().result, sections: [{ heading: "Samenvatting", content: "x" }] },
+      };
+
+      await handleSkillOutput({
+        workflowId: workflow.id,
+        envelope: missingNotulen,
+        promptVersion: "stub-1",
+        schemaVersion: "1.0.0",
+        additionalValidation: () => ({ valid: false, errors: ["Missing required section(s): Notulen"] }),
+      });
+
+      const reloaded = await prisma.workflow.findUniqueOrThrow({ where: { id: workflow.id } });
+      // Still proceeds -- same mandatoryReview shape as a schema failure.
+      expect(reloaded.currentState).toBe(WorkflowState.DRAFT_QUALITY_PRECHECK);
+
+      const aiOutput = await prisma.aiOutput.findFirstOrThrow({
+        where: { workflowId: workflow.id, skillName: DRAFT_GENERATOR_SKILL_NAME },
+      });
+      expect(aiOutput.validationStatus).toBe("INVALID");
+      expect(aiOutput.validationErrors).toEqual(["Missing required section(s): Notulen"]);
     });
   });
 

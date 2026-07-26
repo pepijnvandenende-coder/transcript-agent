@@ -1,39 +1,44 @@
 import type { ReportTypeAdvisorEnvelope } from "../skillEnvelope";
 
-// Phase 5 locked decision: stubbed, not a real LLM call, same pattern as
-// transcriptQualityChecker.ts / merger.ts / conflictDetector.ts. Deterministic:
-// a simple keyword check on the merged content picks between two placeholder
-// categories -- there is no real report-type taxonomy specified anywhere in
-// the architecture doc, so these names are placeholder data for a stub with
-// no LLM behind it yet, not a product decision. Confidence is fixed and
-// unused for routing -- ReportTypeAdvisor's policy is MANDATORY
-// unconditionally (see approval/gateway.ts's mandatoryReview shape), so the
-// confidence score here is stored for the governance record only.
+// Phase 6 retrofit: stubbed, not a real LLM call, same pattern as every other
+// skill -- deterministic, and stays a PURE function (no DB access) like
+// transcriptQualityChecker.ts/merger.ts/conflictDetector.ts. Suggests one of
+// the report_type_policies catalog's own Dutch display names rather than the
+// old Phase 5 English placeholder pair ("Incident Report"/"Standard Audit
+// Summary"), so suggestion -> selection -> drafting is coherent end-to-end.
+// The caller (jobs/runners/suggestReportTypeRunner.ts) fetches the catalog
+// and passes the two labels in, keeping this module DB-free.
+//
+// Heuristic: explicit question marks in the merged content suggest a
+// question-and-answer-style conversation (the "qa" policy); their absence
+// suggests a topic-organized discussion (the "thematic" policy). Confidence
+// is fixed and unused for routing -- ReportTypeAdvisor's policy is MANDATORY
+// unconditionally (see approval/gateway.ts's mandatoryReview shape).
 export const SKILL_NAME = "ReportTypeAdvisor";
 export const SCHEMA_VERSION = "1.0.0";
 export const PROMPT_VERSION = "stub-1";
 
-const INCIDENT_TYPE = "Incident Report";
-const STANDARD_TYPE = "Standard Audit Summary";
-
-export function run(mergedContent: string): ReportTypeAdvisorEnvelope {
-  const looksLikeIncident = /incident/i.test(mergedContent);
-  const suggestedType = looksLikeIncident ? INCIDENT_TYPE : STANDARD_TYPE;
-  const runnerUp = looksLikeIncident ? STANDARD_TYPE : INCIDENT_TYPE;
+export function run(
+  mergedContent: string,
+  options: { thematicLabel: string; qaLabel: string },
+): ReportTypeAdvisorEnvelope {
+  const looksLikeQA = mergedContent.includes("?");
+  const suggestedType = looksLikeQA ? options.qaLabel : options.thematicLabel;
+  const runnerUp = looksLikeQA ? options.thematicLabel : options.qaLabel;
 
   return {
     skill: SKILL_NAME,
     schema_version: SCHEMA_VERSION,
     confidence: 0.85,
-    rationale: looksLikeIncident
-      ? "Stubbed ReportTypeAdvisor output for Phase 5: merged content mentions an incident."
-      : "Stubbed ReportTypeAdvisor output for Phase 5: no incident-specific signal found, defaulting to a standard summary.",
+    rationale: looksLikeQA
+      ? "Stubbed ReportTypeAdvisor output for Phase 6: merged content contains explicit questions, suggesting a Q&A-structured report."
+      : "Stubbed ReportTypeAdvisor output for Phase 6: no explicit questions found, suggesting a thematic report.",
     flags: [],
     result: {
       suggested_type: suggestedType,
-      rationale: looksLikeIncident
-        ? "The merged content references an incident, suggesting an incident-focused report."
-        : "No incident-specific signal was found in the merged content.",
+      rationale: looksLikeQA
+        ? "The merged content contains question marks, consistent with a question-and-answer conversation."
+        : "No question marks were found in the merged content; a thematic structure fits better.",
       runner_up: runnerUp,
     },
   };
