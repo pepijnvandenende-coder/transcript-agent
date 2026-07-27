@@ -93,6 +93,16 @@ export function submitForValidation(workflowId: string, params: { actorId: strin
   });
 }
 
+// The FSM's universal `cancel` action (any non-terminal state -> CANCELLED,
+// see workflow/transitions.ts) -- used by the "terug"/annuleren control on
+// screens with no backward FSM edge (Phase 11 feedback item 2).
+export function cancelWorkflow(workflowId: string, params: { actorId: string; reason?: string }): Promise<Workflow> {
+  return apiFetch<Workflow>(`/workflows/${workflowId}/cancel`, {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+}
+
 export interface Conflict {
   id: string;
   workflowId: string;
@@ -146,6 +156,19 @@ export function getReportTypeSuggestion(workflowId: string): Promise<ReportTypeS
 
 export function selectReportType(workflowId: string, params: { actorId: string; reportType: string }): Promise<Workflow> {
   return apiFetch<Workflow>(`/workflows/${workflowId}/report-type`, { method: "POST", body: JSON.stringify(params) });
+}
+
+export interface ReportTypePolicy {
+  key: string;
+  displayName: string;
+}
+
+// Phase 13: the full active catalog, not workflow-scoped (see
+// backend/src/api/reportTypePolicies.routes.ts) -- backs
+// ReportTypeSelectionScreen's picker, which lets the operator choose any
+// active type, not just the AI's suggestion.
+export function getReportTypePolicies(): Promise<ReportTypePolicy[]> {
+  return apiFetch<ReportTypePolicy[]>("/report-type-policies");
 }
 
 export interface DraftSection {
@@ -217,4 +240,85 @@ export function getFinalReport(workflowId: string): Promise<FinalReport> {
 // download natively through the same Vite dev proxy every other call uses.
 export function finalReportDownloadUrl(workflowId: string): string {
   return `/workflows/${workflowId}/final-report/download`;
+}
+
+export interface ConfidenceBreakdown {
+  llmSelfReported: number;
+  structuralScore: number;
+  confidence: number;
+}
+
+export interface ApprovalRequest {
+  id: string;
+  workflowId: string;
+  aiOutputId: string;
+  intendedNextState: WorkflowState;
+  attemptCount: number;
+  status: "PENDING" | "RESOLVED";
+  resolution: string | null;
+  createdAt: string;
+  resolvedAt: string | null;
+  aiOutput: {
+    id: string;
+    skillName: string;
+    validationStatus: "VALID" | "INVALID";
+    validationErrors: unknown;
+    confidenceScore: number | null;
+    confidenceBreakdown: ConfidenceBreakdown | null;
+    attemptNumber: number;
+  };
+  maxRetries: number;
+}
+
+export function getApprovalRequest(workflowId: string): Promise<ApprovalRequest> {
+  return apiFetch<ApprovalRequest>(`/workflows/${workflowId}/approval-request`);
+}
+
+export function confirmApprovalRequestAction(workflowId: string, params: { actorId: string }): Promise<Workflow> {
+  return apiFetch<Workflow>(`/workflows/${workflowId}/approval-request/confirm`, {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+}
+
+// No plain "retry without changes" client function -- Phase 12 locked
+// decision: ConfirmLowConfidenceScreen offers exactly three choices
+// (confirm / edit-and-retry / cancel), not the backend's separate
+// retry-unchanged action.
+export function editRetryApprovalRequestAction(
+  workflowId: string,
+  params: { actorId: string; transcriptContent?: string; notesContent?: string },
+): Promise<Workflow> {
+  return apiFetch<Workflow>(`/workflows/${workflowId}/approval-request/edit-retry`, {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+}
+
+export interface WorkflowJob {
+  id: string;
+  workflowId: string;
+  jobType: string;
+  status: "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED";
+  error: string | null;
+  attemptCount: number;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+// Phase 13: lets the UI explain *why* a workflow is waiting (queued vs.
+// actively running) instead of a bare spinner, and surface a job's `error`
+// once it has failed -- see backend/src/jobs/worker.ts's failJob().
+export function getLatestJob(workflowId: string): Promise<WorkflowJob> {
+  return apiFetch<WorkflowJob>(`/workflows/${workflowId}/jobs/latest`);
+}
+
+// Phase 13: recovers a workflow stuck at FAILED by re-running the job that
+// failed, using the `retry_failed_job.<state>` FSM edges that existed since
+// Phase 1 but had no route until now.
+export function retryFailedJob(workflowId: string, params: { actorId: string }): Promise<Workflow> {
+  return apiFetch<Workflow>(`/workflows/${workflowId}/actions/retry-failed-job`, {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
 }

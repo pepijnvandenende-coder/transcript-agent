@@ -5,6 +5,15 @@ import type { MergerEnvelope } from "../skillEnvelope";
 // TranscriptQualityChecker's fixed-confidence stub) so both the auto-approve
 // and low-confidence Gateway paths are reachable live at the seeded 0.80
 // threshold, without a temporary policy edit.
+//
+// Phase 13: WITHOUT_NOTES_CONFIDENCE being below the 0.80 threshold was only
+// ever meant to make the low-confidence Gateway path reachable for testing
+// (see the comment above) -- it was never a real signal of merge
+// uncertainty, since there is nothing to reconcile between two sources when
+// only one was provided. approval/policyResolver.ts's semantic hook now
+// reads `result.notes_provided` to auto-approve this case unconditionally,
+// so this constant stays low (the historical/test value is preserved) but
+// no longer routes a transcript-only workflow to PENDING_HUMAN_CONFIRMATION.
 export const SKILL_NAME = "Merger";
 export const SCHEMA_VERSION = "1.0.0";
 export const PROMPT_VERSION = "stub-1";
@@ -31,6 +40,7 @@ export function run(transcriptContent: string, notesContent?: string): MergerEnv
     result: {
       merged_sections: sections,
       unmatched_notes: [],
+      notes_provided: hasNotes,
     },
   };
 }

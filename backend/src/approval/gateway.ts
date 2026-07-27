@@ -232,6 +232,19 @@ const JOB_FOR_STATE: Partial<Record<WorkflowState, JobType>> = Object.fromEntrie
   Object.values(SKILL_ROUTING).map((routing) => [routing.originatingState, routing.jobType]),
 );
 
+// The reverse of JOB_FOR_STATE -- which PROCESSING state a given JobType
+// belongs to. Phase 13: used by jobs/worker.ts to fire the right
+// `job_failed.<state>` system event (see workflow/transitions.ts's
+// FAILURE_TRANSITIONS) when a runner throws, since a Job row only carries
+// its jobType, not the WorkflowState it was enqueued for.
+const STATE_FOR_JOB_TYPE: Partial<Record<JobType, WorkflowState>> = Object.fromEntries(
+  Object.values(SKILL_ROUTING).map((routing) => [routing.jobType, routing.originatingState]),
+);
+
+export function originatingStateForJobType(jobType: JobType): WorkflowState | undefined {
+  return STATE_FOR_JOB_TYPE[jobType];
+}
+
 /**
  * Called after every engine.transition() in this file, keyed off the
  * transition's ACTUAL resulting state (not an assumed target) -- so it stays

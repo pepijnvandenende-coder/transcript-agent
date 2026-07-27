@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as client from "../../api-client/client";
 import { UploadScreen } from "./UploadScreen";
@@ -17,6 +18,14 @@ function workflow(overrides: Partial<client.Workflow> = {}): client.Workflow {
   };
 }
 
+function renderScreen(props: Partial<Parameters<typeof UploadScreen>[0]> = {}) {
+  return render(
+    <MemoryRouter>
+      <UploadScreen workflow={workflow()} currentUserId="u1" onUpdated={vi.fn()} {...props} />
+    </MemoryRouter>,
+  );
+}
+
 describe("routes/Upload/UploadScreen", () => {
   afterEach(() => {
     cleanup();
@@ -24,7 +33,7 @@ describe("routes/Upload/UploadScreen", () => {
   });
 
   it("disables the submit button until transcript text is entered", () => {
-    render(<UploadScreen workflow={workflow()} currentUserId="u1" onUpdated={vi.fn()} />);
+    renderScreen();
 
     expect(screen.getByRole("button", { name: /Uploaden en indienen/ })).toBeDisabled();
 
@@ -41,7 +50,7 @@ describe("routes/Upload/UploadScreen", () => {
       .mockResolvedValue(workflow({ currentState: "VALIDATING_TRANSCRIPT" }));
     const onUpdated = vi.fn();
 
-    render(<UploadScreen workflow={workflow()} currentUserId="u1" onUpdated={onUpdated} />);
+    renderScreen({ onUpdated });
 
     fireEvent.change(screen.getByLabelText("Transcript"), { target: { value: "Some transcript content" } });
     fireEvent.change(screen.getByLabelText("Notities (optioneel)"), { target: { value: "Some notes" } });
@@ -67,7 +76,7 @@ describe("routes/Upload/UploadScreen", () => {
     const uploadNotesMock = vi.spyOn(client, "uploadNotes").mockResolvedValue({});
     vi.spyOn(client, "submitForValidation").mockResolvedValue(workflow({ currentState: "VALIDATING_TRANSCRIPT" }));
 
-    render(<UploadScreen workflow={workflow()} currentUserId="u1" onUpdated={vi.fn()} />);
+    renderScreen();
 
     fireEvent.change(screen.getByLabelText("Transcript"), { target: { value: "Some transcript content" } });
     fireEvent.click(screen.getByRole("button", { name: /Uploaden en indienen/ }));
@@ -83,7 +92,7 @@ describe("routes/Upload/UploadScreen", () => {
     const uploadTranscriptMock = vi.spyOn(client, "uploadTranscript");
     const onUpdated = vi.fn();
 
-    render(<UploadScreen workflow={workflow({ currentState: "TRANSCRIPT_UPLOADED" })} currentUserId="u1" onUpdated={onUpdated} />);
+    renderScreen({ workflow: workflow({ currentState: "TRANSCRIPT_UPLOADED" }), onUpdated });
 
     fireEvent.click(screen.getByRole("button", { name: "Indienen voor validatie" }));
 
@@ -92,14 +101,38 @@ describe("routes/Upload/UploadScreen", () => {
     expect(submitForValidationMock).toHaveBeenCalledWith("w1", { actorId: "u1" });
   });
 
-  it("shows an error message when submission fails", async () => {
-    vi.spyOn(client, "uploadTranscript").mockRejectedValue(new Error("Netwerkfout"));
+  it("shows a translated error message when submission fails", async () => {
+    vi.spyOn(client, "uploadTranscript").mockRejectedValue(new Error("network down"));
 
-    render(<UploadScreen workflow={workflow()} currentUserId="u1" onUpdated={vi.fn()} />);
+    renderScreen();
 
     fireEvent.change(screen.getByLabelText("Transcript"), { target: { value: "Some transcript content" } });
     fireEvent.click(screen.getByRole("button", { name: /Uploaden en indienen/ }));
 
-    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Netwerkfout"));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Er is een fout opgetreden."));
+  });
+
+  it("extracts text from an uploaded .txt file into the transcript field", async () => {
+    renderScreen();
+
+    const file = new File(["Tekst uit bestand"], "transcript.txt", { type: "text/plain" });
+    fireEvent.change(screen.getByLabelText("Transcript als bestand uploaden"), { target: { files: [file] } });
+
+    await waitFor(() => expect(screen.getByLabelText("Transcript")).toHaveValue("Tekst uit bestand"));
+  });
+
+  it("shows a Dutch error and does not populate the field when a .pdf file is uploaded", async () => {
+    renderScreen();
+
+    const file = new File(["%PDF-1.4"], "transcript.pdf", { type: "application/pdf" });
+    fireEvent.change(screen.getByLabelText("Transcript als bestand uploaden"), { target: { files: [file] } });
+
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/PDF wordt nog niet ondersteund/));
+    expect(screen.getByLabelText("Transcript")).toHaveValue("");
+  });
+
+  it("has a back control that does not call the backend", () => {
+    renderScreen();
+    expect(screen.getByRole("button", { name: "Terug naar begin" })).toBeInTheDocument();
   });
 });

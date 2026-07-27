@@ -1,5 +1,7 @@
-import { JobType, type RetryMode } from "@prisma/client";
+import { ActorType, JobType, type RetryMode } from "@prisma/client";
+import { originatingStateForJobType } from "../approval/gateway";
 import { claimNextQueuedJob, markJobFailed, markJobSucceeded } from "../persistence/repositories/jobRepository";
+import * as engine from "../workflow/engine";
 import { runDetectConflictsJob } from "./runners/conflictDetectionRunner";
 import { runDraftQualityPrecheckJob } from "./runners/draftQualityPrecheckRunner";
 import { runGenerateDraftJob } from "./runners/draftGenerationRunner";
@@ -47,7 +49,7 @@ export async function processNextJob(): Promise<boolean> {
 
   const runner = RUNNERS[job.jobType];
   if (!runner) {
-    await markJobFailed(job.id, `No runner registered for job type ${job.jobType}`);
+    await failJob(job.id, job.workflowId, job.jobType, `No runner registered for job type ${job.jobType}`);
     return true;
   }
 
@@ -61,9 +63,46 @@ export async function processNextJob(): Promise<boolean> {
     });
     await markJobSucceeded(job.id, result);
   } catch (err) {
-    await markJobFailed(job.id, err instanceof Error ? err.message : String(err));
+    await failJob(job.id, job.workflowId, job.jobType, err instanceof Error ? err.message : String(err));
   }
   return true;
+}
+
+// Phase 13 bug fix: markJobFailed() only ever updated the `jobs` row --
+// nothing fired the `job_failed.<state>` system event that
+// workflow/transitions.ts's FAILURE_TRANSITIONS already declares (since
+// Phase 1), so a failed job left the workflow's own currentState stuck at
+// whatever PROCESSING state it was in forever (e.g. GENERATING_DRAFT), with
+// no visible error and no way to retry -- indistinguishable from "hanging"
+// to an operator. This is the single choke point that actually raises that
+// event, for both a thrown runner and a missing-runner misconfiguration.
+async function failJob(jobId: string, workflowId: string, jobType: JobType, error: string): Promise<void> {
+  await markJobFailed(jobId, error);
+
+  const state = originatingStateForJobType(jobType);
+  if (!state) {
+    // Should not happen -- every registered JobType has a SKILL_ROUTING
+    // entry with an originatingState. Surfaced via the job's own `error`
+    // column (already written above) rather than thrown, so one
+    // misconfigured job type can't crash the whole polling loop.
+    console.error(`No originating WorkflowState registered for job type ${jobType}; cannot fail workflow ${workflowId}`);
+    return;
+  }
+
+  try {
+    await engine.transition({
+      workflowId,
+      trigger: { kind: "system_event", event: `job_failed.${state}` },
+      actor: { actorType: ActorType.SYSTEM },
+      metadata: { reason: "job_failed", jobId, error },
+    });
+  } catch (transitionErr) {
+    // Never let a failure to *record* the failure crash the polling loop --
+    // that would silently stop every future job across every workflow,
+    // reintroducing the exact "stuck forever" symptom this fix exists to
+    // close. The job row already carries `error` regardless.
+    console.error(`Failed to transition workflow ${workflowId} to FAILED after job ${jobId}:`, transitionErr);
+  }
 }
 
 export async function runPollingLoop(intervalMs = 2000): Promise<never> {

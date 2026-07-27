@@ -7,10 +7,12 @@ import {
   InvalidRetryInputError,
   InvalidTransitionError,
   MaxRetriesExceededError,
+  NoFailedJobFoundError,
   NoOpenApprovalRequestError,
   NotAtCheckpointError,
   NotAtConflictReviewError,
   NotAtDraftReviewError,
+  NotAtFailedStateError,
   NotAwaitingReportTypeSelectionError,
   UnknownReportTypeError,
 } from "../domain/types";
@@ -29,12 +31,17 @@ export function apiErrorHandler(err: unknown, _req: Request, res: Response, _nex
     err instanceof ConflictAlreadyResolvedError ||
     err instanceof NotAwaitingReportTypeSelectionError ||
     err instanceof NotAtDraftReviewError ||
-    err instanceof DraftVersionMismatchError
+    err instanceof DraftVersionMismatchError ||
+    err instanceof NotAtFailedStateError
   ) {
     res.status(409).json({ error: err.message });
     return;
   }
-  if (err instanceof NoOpenApprovalRequestError || err instanceof ConflictNotFoundError) {
+  if (
+    err instanceof NoOpenApprovalRequestError ||
+    err instanceof ConflictNotFoundError ||
+    err instanceof NoFailedJobFoundError
+  ) {
     res.status(404).json({ error: err.message });
     return;
   }

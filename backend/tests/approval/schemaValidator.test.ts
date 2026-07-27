@@ -1,10 +1,35 @@
 import { describe, expect, it } from "vitest";
 import * as conflictDetector from "../../src/ai/skills/conflictDetector";
-import * as draftGenerator from "../../src/ai/skills/draftGenerator";
 import * as merger from "../../src/ai/skills/merger";
-import * as reportTypeAdvisor from "../../src/ai/skills/reportTypeAdvisor";
 import { run } from "../../src/ai/skills/transcriptQualityChecker";
+import type { DraftGeneratorEnvelope, ReportTypeAdvisorEnvelope } from "../../src/ai/skillEnvelope";
 import { checkSchema } from "../../src/approval/schemaValidator";
+
+// DraftGenerator itself now calls the real Anthropic API (Phase 11) -- this
+// file tests pure schema-validation logic ("Pure logic -- no database
+// needed", see below), so it builds a DraftGenerator-shaped envelope by hand
+// rather than depending on the (now async, LLM-backed) draftGenerator.run().
+function draftGeneratorEnvelope(): DraftGeneratorEnvelope {
+  return {
+    skill: "DraftGenerator",
+    schema_version: "1.0.0",
+    confidence: 1,
+    rationale: "test fixture",
+    flags: [],
+    result: {
+      report_type: "thematic",
+      title: "Gespreksverslag Test Workflow",
+      attendees: [],
+      date: "2026-01-01",
+      subject: "Test Workflow",
+      sections: [
+        { heading: "Samenvatting", content: "x" },
+        { heading: "Notulen", content: "y" },
+      ],
+      coverage: 1,
+    },
+  };
+}
 
 // Pure logic -- no database needed.
 describe("schemaValidator.checkSchema", () => {
@@ -57,39 +82,47 @@ describe("schemaValidator.checkSchema", () => {
     expect(result.valid).toBe(false);
   });
 
-  const reportTypeLabels = { thematicLabel: "Thematisch gespreksverslag", qaLabel: "Vraag & antwoord gespreksverslag" };
+  // ReportTypeAdvisor itself now calls the real Anthropic API (Phase 13) --
+  // this file tests pure schema-validation logic, so it builds a
+  // ReportTypeAdvisor-shaped envelope by hand rather than depending on the
+  // (now async, LLM-backed) reportTypeAdvisor.run(), same pattern as
+  // draftGeneratorEnvelope() above.
+  function reportTypeAdvisorEnvelope(): ReportTypeAdvisorEnvelope {
+    return {
+      skill: "ReportTypeAdvisor",
+      schema_version: "1.0.0",
+      confidence: 1,
+      rationale: "test fixture",
+      flags: [],
+      result: {
+        suggested_type: "thematic",
+        rationale: "Het gesprek is opgebouwd rond duidelijke thema's.",
+        runner_up: "qa",
+      },
+    };
+  }
 
   it("accepts a well-formed ReportTypeAdvisor envelope", () => {
-    const envelope = reportTypeAdvisor.run("some merged content", reportTypeLabels);
+    const envelope = reportTypeAdvisorEnvelope();
     const result = checkSchema("ReportTypeAdvisor", envelope);
     expect(result.valid).toBe(true);
   });
 
   it("rejects a ReportTypeAdvisor envelope missing suggested_type", () => {
-    const envelope = reportTypeAdvisor.run("some merged content", reportTypeLabels);
+    const envelope = reportTypeAdvisorEnvelope();
     const malformed = { ...envelope, result: { rationale: envelope.result.rationale } };
     const result = checkSchema("ReportTypeAdvisor", malformed);
     expect(result.valid).toBe(false);
   });
 
   it("accepts a well-formed DraftGenerator envelope", () => {
-    const envelope = draftGenerator.run({
-      mergedContent: "some merged content",
-      policyKey: "thematic",
-      subject: "Test Workflow",
-      date: "2026-01-01",
-    });
+    const envelope = draftGeneratorEnvelope();
     const result = checkSchema("DraftGenerator", envelope);
     expect(result.valid).toBe(true);
   });
 
   it("rejects a DraftGenerator envelope missing sections", () => {
-    const envelope = draftGenerator.run({
-      mergedContent: "some merged content",
-      policyKey: "thematic",
-      subject: "Test Workflow",
-      date: "2026-01-01",
-    });
+    const envelope = draftGeneratorEnvelope();
     const malformed = { ...envelope, result: { ...envelope.result, sections: "not an array" } };
     const result = checkSchema("DraftGenerator", malformed);
     expect(result.valid).toBe(false);

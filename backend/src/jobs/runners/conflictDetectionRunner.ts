@@ -15,8 +15,27 @@ export async function runDetectConflictsJob(job: JobRunnerInput): Promise<JobRun
     throw new Error(`Workflow ${job.workflowId} has no merged output to check for conflicts (job ${job.id})`);
   }
 
+  const mergedSections = (merge.mergedSections as unknown as Array<{ source: string }>) ?? [];
+  const hasNotesSection = mergedSections.some((section) => section.source === "notes" || section.source === "both");
   const unmatchedNotes = (merge.unmatchedNotes as unknown as string[]) ?? [];
-  const envelope = conflictDetector.run(unmatchedNotes);
+
+  // Phase 13: a transcript-only merge has a single source -- there is
+  // structurally nothing to compare for conflicts, so calling the skill
+  // would only ever produce a vacuous "no conflicts" result at real cost
+  // (once ConflictDetector, like DraftGenerator/ReportTypeAdvisor, becomes a
+  // real LLM call). Skip the call entirely rather than invoke it for a
+  // foregone conclusion; the resulting envelope is otherwise identical to
+  // what the stub already always returns for this case.
+  const envelope = hasNotesSection
+    ? conflictDetector.run(unmatchedNotes)
+    : {
+        skill: conflictDetector.SKILL_NAME,
+        schema_version: conflictDetector.SCHEMA_VERSION,
+        confidence: 1,
+        rationale: "Skipped: single-source merge (no notes) has nothing to compare for conflicts.",
+        flags: ["no_notes_to_compare"],
+        result: { conflicts: [] },
+      };
 
   const { aiOutputId } = await handleSkillOutput({
     workflowId: job.workflowId,

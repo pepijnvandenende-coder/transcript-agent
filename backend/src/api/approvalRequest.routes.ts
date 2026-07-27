@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { z } from "zod";
 import { confirmApprovalRequest, editRetryApprovalRequest, retryApprovalRequest } from "../approval/gateway";
+import { getMaxRetries } from "../approval/policyResolver";
+import { findAiOutputById } from "../persistence/repositories/aiOutputRepository";
 import { findOpenApprovalRequest } from "../persistence/repositories/approvalRequestRepository";
 import { findWorkflowById } from "../persistence/repositories/workflowRepository";
 import { apiErrorHandler } from "./errorHandler";
@@ -8,7 +10,12 @@ import { apiErrorHandler } from "./errorHandler";
 // Mounted at /workflows -- see api/app.ts.
 export const approvalRequestRouter = Router();
 
-// GET /workflows/:id/approval-request -- the open episode, if any.
+// GET /workflows/:id/approval-request -- the open episode, if any, plus the
+// nested ai_output fields (skillName, validation/confidence data) and
+// maxRetries a checkpoint UI (Phase 12: ConfirmLowConfidenceScreen) needs to
+// explain the checkpoint and disable retry/edit-retry once the budget is
+// spent. Reuses findAiOutputById()/getMaxRetries(), both already called by
+// approval/gateway.ts -- no new repository code, no schema change.
 approvalRequestRouter.get("/:id/approval-request", async (req, res, next) => {
   try {
     const workflow = await findWorkflowById(req.params.id);
@@ -21,7 +28,25 @@ approvalRequestRouter.get("/:id/approval-request", async (req, res, next) => {
       res.status(404).json({ error: "No open approval request for this workflow" });
       return;
     }
-    res.json(openRequest);
+    const aiOutput = await findAiOutputById(openRequest.aiOutputId);
+    if (!aiOutput) {
+      res.status(500).json({ error: `ApprovalRequest ${openRequest.id} references missing ai_output ${openRequest.aiOutputId}` });
+      return;
+    }
+    const maxRetries = await getMaxRetries(aiOutput.skillName);
+    res.json({
+      ...openRequest,
+      aiOutput: {
+        id: aiOutput.id,
+        skillName: aiOutput.skillName,
+        validationStatus: aiOutput.validationStatus,
+        validationErrors: aiOutput.validationErrors,
+        confidenceScore: aiOutput.confidenceScore,
+        confidenceBreakdown: aiOutput.confidenceBreakdown,
+        attemptNumber: aiOutput.attemptNumber,
+      },
+      maxRetries,
+    });
   } catch (err) {
     next(err);
   }

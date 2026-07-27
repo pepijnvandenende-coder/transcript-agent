@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ApiError,
+  cancelWorkflow,
   createUser,
   createWorkflow,
   explainConflict,
@@ -192,5 +193,17 @@ describe("api-client/client", () => {
 
   it("finalReportDownloadUrl builds the download path without calling fetch", () => {
     expect(finalReportDownloadUrl("w1")).toBe("/workflows/w1/final-report/download");
+  });
+
+  it("cancelWorkflow posts to /workflows/:id/cancel", async () => {
+    const fetchMock = mockFetchOnce(200, { id: "w1", currentState: "CANCELLED" });
+
+    const workflow = await cancelWorkflow("w1", { actorId: "u1" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/workflows/w1/cancel",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ actorId: "u1" }) }),
+    );
+    expect(workflow.currentState).toBe("CANCELLED");
   });
 });

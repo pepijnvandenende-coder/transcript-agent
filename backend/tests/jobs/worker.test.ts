@@ -2,8 +2,54 @@ import { randomUUID } from "node:crypto";
 import { rmSync } from "node:fs";
 import path from "node:path";
 import { ActorType, JobStatus, JobType, PolicyType } from "@prisma/client";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { retryApprovalRequest } from "../../src/approval/gateway";
+
+// DraftGenerator (Phase 11) and ReportTypeAdvisor (Phase 13) both call the
+// real Anthropic API -- mocked here so this real-Postgres integration suite
+// stays network-free. Both skills share the same getAnthropicClient(), so
+// the mock branches on the request's own output_config.format.schema (each
+// skill asks for a differently-shaped structured output) rather than
+// returning one fixed response for every call. The DraftGenerator branch's
+// response includes both required Dutch section headings with non-empty
+// content, since the downstream DraftQualityPrecheck job (also exercised
+// below, unmocked -- it's still a deterministic stub) checks for exactly
+// that. The ReportTypeAdvisor branch returns "thematic", a key both
+// report_type_policies rows seeded in beforeAll actually have.
+vi.mock("../../src/ai/anthropicClient", () => ({
+  getAnthropicClient: () => ({
+    messages: {
+      create: vi.fn().mockImplementation((params: { output_config?: { format?: { schema?: { properties?: Record<string, unknown> } } } }) => {
+        const isReportTypeClassification = "suggested_type" in (params.output_config?.format?.schema?.properties ?? {});
+        if (isReportTypeClassification) {
+          return Promise.resolve({
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({ suggested_type: "thematic", rationale: "Test rationale.", runner_up: "qa" }),
+              },
+            ],
+          });
+        }
+        return Promise.resolve({
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                title: "Gespreksverslag Test",
+                attendees: [],
+                sections: [
+                  { heading: "Samenvatting", content: "Kernpunten van het gesprek." },
+                  { heading: "Notulen", content: "Gedetailleerde weergave van het gesprek." },
+                ],
+              }),
+            },
+          ],
+        });
+      }),
+    },
+  }),
+}));
 import { approveDraft, requestDraftChanges } from "../../src/approval/draftReview";
 import { selectReportType } from "../../src/approval/reportTypeSelection";
 import { env } from "../../src/config/env";
@@ -489,6 +535,75 @@ describe("jobs: queue + processNextJob (no daemon required)", () => {
     await prisma.transcript.deleteMany({ where: { workflowId: workflow.id } });
     await prisma.workflow.delete({ where: { id: workflow.id } });
     await prisma.user.delete({ where: { id: retryUser.id } });
+    rmSync(path.resolve(env.storageRootDir, workflow.id), { recursive: true, force: true });
+  });
+
+  it("Phase 13: a transcript-only workflow (no notes) never opens PENDING_HUMAN_CONFIRMATION and skips the ConflictDetector call", async () => {
+    // Uses its own dedicated workflow/user, same pattern as the retry
+    // lineage test above -- this specifically needs a workflow with NO
+    // notes uploaded, unlike the shared workflow at the top of this file.
+    const noNotesUser = await prisma.user.create({
+      data: { name: "No Notes User", email: `no-notes-${randomUUID()}@example.com`, role: "reviewer" },
+    });
+    const workflow = await engine.createWorkflow({ title: "No Notes Workflow", createdById: noNotesUser.id });
+    await engine.transition({
+      workflowId: workflow.id,
+      trigger: { kind: "user_action", action: "upload_transcript" },
+      actor: { actorType: ActorType.USER, actorId: noNotesUser.id },
+    });
+    await engine.transition({
+      workflowId: workflow.id,
+      trigger: { kind: "user_action", action: "submit_for_validation" },
+      actor: { actorType: ActorType.USER, actorId: noNotesUser.id },
+    });
+    const transcript = await createTranscriptVersion({
+      workflowId: workflow.id,
+      uploadedById: noNotesUser.id,
+      content: "a transcript with no accompanying notes at all",
+    });
+
+    const validateJob = await enqueue({ workflowId: workflow.id, jobType: JobType.VALIDATE_TRANSCRIPT, inputRef: transcript.id });
+    await processUntilSettled(validateJob.id);
+    const afterValidate = await prisma.workflow.findUniqueOrThrow({ where: { id: workflow.id } });
+    expect(afterValidate.currentState).toBe(WorkflowState.MERGING);
+
+    const mergeJob = await prisma.job.findFirstOrThrow({ where: { workflowId: workflow.id, jobType: JobType.MERGE } });
+    await processUntilSettled(mergeJob.id);
+    const afterMerge = await prisma.workflow.findUniqueOrThrow({ where: { id: workflow.id } });
+    // The core Phase 13 fix: without notes, Merger's own confidence (0.65,
+    // below the 0.80 threshold) must NOT open PENDING_HUMAN_CONFIRMATION --
+    // it auto-approves straight through, per policyResolver.ts's Merger hook.
+    expect(afterMerge.currentState).toBe(WorkflowState.DETECTING_CONFLICTS);
+    const mergeOutput = await prisma.aiOutput.findUniqueOrThrow({
+      where: { id: (await prisma.job.findUniqueOrThrow({ where: { id: mergeJob.id } })).resultAiOutputId! },
+    });
+    expect(mergeOutput.confidenceScore).toBeLessThan(0.8);
+
+    const detectJob = await prisma.job.findFirstOrThrow({ where: { workflowId: workflow.id, jobType: JobType.DETECT_CONFLICTS } });
+    await processUntilSettled(detectJob.id);
+    const afterDetect = await prisma.workflow.findUniqueOrThrow({ where: { id: workflow.id } });
+    expect(afterDetect.currentState).toBe(WorkflowState.SUGGESTING_REPORT_TYPE);
+    const detectOutput = await prisma.aiOutput.findUniqueOrThrow({
+      where: { id: (await prisma.job.findUniqueOrThrow({ where: { id: detectJob.id } })).resultAiOutputId! },
+    });
+    // Confirms conflictDetectionRunner.ts actually skipped calling
+    // ai/skills/conflictDetector.ts, rather than merely happening to
+    // auto-approve -- the flag only appears on the skipped path.
+    expect((detectOutput.rawOutput as { flags: string[] }).flags).toContain("no_notes_to_compare");
+
+    // Never touched PENDING_HUMAN_CONFIRMATION at any point in this run.
+    const history = await prisma.stateTransition.findMany({ where: { workflowId: workflow.id } });
+    expect(history.map((h) => h.toState)).not.toContain(WorkflowState.PENDING_HUMAN_CONFIRMATION);
+
+    await prisma.stateTransition.deleteMany({ where: { workflowId: workflow.id } });
+    await prisma.job.updateMany({ where: { workflowId: workflow.id }, data: { resultAiOutputId: null } });
+    await prisma.merge.deleteMany({ where: { workflowId: workflow.id } });
+    await prisma.aiOutputInput.deleteMany({ where: { aiOutput: { workflowId: workflow.id } } });
+    await prisma.aiOutput.deleteMany({ where: { workflowId: workflow.id } });
+    await prisma.job.deleteMany({ where: { workflowId: workflow.id } });
+    await prisma.transcript.deleteMany({ where: { workflowId: workflow.id } });
+    await prisma.workflow.delete({ where: { id: workflow.id } });
+    await prisma.user.delete({ where: { id: noNotesUser.id } });
     rmSync(path.resolve(env.storageRootDir, workflow.id), { recursive: true, force: true });
   });
 });

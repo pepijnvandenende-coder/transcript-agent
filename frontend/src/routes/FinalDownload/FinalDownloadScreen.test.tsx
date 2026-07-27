@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError, type FinalReport, type Workflow } from "../../api-client/client";
 import * as client from "../../api-client/client";
@@ -32,6 +33,14 @@ function finalReport(overrides: Partial<FinalReport> = {}): FinalReport {
   };
 }
 
+function renderScreen(props: Partial<Parameters<typeof FinalDownloadScreen>[0]> = {}) {
+  return render(
+    <MemoryRouter>
+      <FinalDownloadScreen workflow={workflow()} currentUserId="u1" onUpdated={vi.fn()} {...props} />
+    </MemoryRouter>,
+  );
+}
+
 describe("routes/FinalDownload/FinalDownloadScreen", () => {
   afterEach(() => {
     cleanup();
@@ -41,7 +50,7 @@ describe("routes/FinalDownload/FinalDownloadScreen", () => {
   it("shows the final report metadata and a download link", async () => {
     vi.spyOn(client, "getFinalReport").mockResolvedValue(finalReport());
 
-    render(<FinalDownloadScreen workflow={workflow()} currentUserId="u1" onUpdated={vi.fn()} />);
+    renderScreen();
 
     await screen.findByText("Gespreksverslag Kickoff");
     expect(screen.getByText("Formaat: markdown")).toBeInTheDocument();
@@ -55,7 +64,7 @@ describe("routes/FinalDownload/FinalDownloadScreen", () => {
       .mockRejectedValueOnce(new ApiError(404, "Final report not available yet"))
       .mockResolvedValueOnce(finalReport());
 
-    render(<FinalDownloadScreen workflow={workflow()} currentUserId="u1" onUpdated={vi.fn()} />);
+    renderScreen();
 
     await screen.findByText("Eindrapport nog niet beschikbaar, probeer te vernieuwen.");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
@@ -66,11 +75,20 @@ describe("routes/FinalDownload/FinalDownloadScreen", () => {
     await screen.findByText("Gespreksverslag Kickoff");
   });
 
-  it("shows a load error that isn't a 404", async () => {
-    vi.spyOn(client, "getFinalReport").mockRejectedValue(new Error("Server fout"));
+  it("shows a translated load error that isn't a 404", async () => {
+    vi.spyOn(client, "getFinalReport").mockRejectedValue(new Error("boom"));
 
-    render(<FinalDownloadScreen workflow={workflow()} currentUserId="u1" onUpdated={vi.fn()} />);
+    renderScreen();
 
-    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Server fout"));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Er is een fout opgetreden."));
+  });
+
+  it("offers a cancel control even while the report isn't ready yet", async () => {
+    vi.spyOn(client, "getFinalReport").mockRejectedValue(new ApiError(404, "Final report not available yet"));
+
+    renderScreen();
+
+    await screen.findByText("Eindrapport nog niet beschikbaar, probeer te vernieuwen.");
+    expect(screen.getByRole("button", { name: "Workflow annuleren" })).toBeInTheDocument();
   });
 });

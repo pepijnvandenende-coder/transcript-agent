@@ -35,6 +35,11 @@ export type MergedSection = z.infer<typeof MergedSectionSchema>;
 export const MergerResultSchema = z.object({
   merged_sections: z.array(MergedSectionSchema),
   unmatched_notes: z.array(z.string()),
+  // Phase 13: lets approval/policyResolver.ts's semantic hook distinguish
+  // "confidence is low because there was genuinely nothing to reconcile
+  // between two sources" from real merge uncertainty, without the hook
+  // needing access to anything beyond this skill's own result.
+  notes_provided: z.boolean(),
 });
 export type MergerResult = z.infer<typeof MergerResultSchema>;
 

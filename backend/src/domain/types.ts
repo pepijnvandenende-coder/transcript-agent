@@ -177,3 +177,27 @@ export class DraftVersionMismatchError extends Error {
     this.name = "DraftVersionMismatchError";
   }
 }
+
+// Phase 13: raised by POST /workflows/:id/actions/retry-failed-job when the
+// workflow isn't at FAILED -- mirrors NotAtCheckpointError's role for the
+// generic checkpoint.
+export class NotAtFailedStateError extends Error {
+  constructor(
+    public readonly workflowId: string,
+    public readonly currentState: WorkflowState,
+  ) {
+    super(`Workflow ${workflowId} is not at FAILED (current state: ${currentState}); cannot retry a failed job`);
+    this.name = "NotAtFailedStateError";
+  }
+}
+
+// Phase 13: raised when a retry-failed-job is attempted but no FAILED job
+// row exists for the workflow -- should not happen once every job failure
+// goes through jobs/worker.ts's failJob() (which always writes one before
+// transitioning to FAILED), but guarded rather than assumed.
+export class NoFailedJobFoundError extends Error {
+  constructor(public readonly workflowId: string) {
+    super(`Workflow ${workflowId} has no failed job to retry`);
+    this.name = "NoFailedJobFoundError";
+  }
+}

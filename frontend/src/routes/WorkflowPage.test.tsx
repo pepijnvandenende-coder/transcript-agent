@@ -10,12 +10,17 @@ import { WorkflowPage } from "./WorkflowPage";
 // dedicated test file, so the screens are stubbed here to keep this test
 // isolated to WorkflowPage's own logic.
 vi.mock("./Upload/UploadScreen", () => ({ UploadScreen: () => <div>UploadScreenStub</div> }));
+vi.mock("./ConfirmLowConfidence/ConfirmLowConfidenceScreen", () => ({
+  ConfirmLowConfidenceScreen: () => <div>ConfirmLowConfidenceScreenStub</div>,
+}));
 vi.mock("./ConflictReview/ConflictReviewScreen", () => ({ ConflictReviewScreen: () => <div>ConflictReviewScreenStub</div> }));
 vi.mock("./ReportTypeSelection/ReportTypeSelectionScreen", () => ({
   ReportTypeSelectionScreen: () => <div>ReportTypeSelectionScreenStub</div>,
 }));
 vi.mock("./DraftReview/DraftReviewScreen", () => ({ DraftReviewScreen: () => <div>DraftReviewScreenStub</div> }));
 vi.mock("./FinalDownload/FinalDownloadScreen", () => ({ FinalDownloadScreen: () => <div>FinalDownloadScreenStub</div> }));
+vi.mock("./Failed/FailedScreen", () => ({ FailedScreen: () => <div>FailedScreenStub</div> }));
+vi.mock("../components/JobStatusHint", () => ({ JobStatusHint: () => <div>JobStatusHintStub</div> }));
 
 function workflow(overrides: Partial<Workflow> = {}): Workflow {
   return {
@@ -73,24 +78,23 @@ describe("routes/WorkflowPage", () => {
     ["CREATED", "UploadScreenStub"],
     ["TRANSCRIPT_UPLOADED", "UploadScreenStub"],
     ["VALIDATING_TRANSCRIPT", "UploadScreenStub"],
+    ["PENDING_HUMAN_CONFIRMATION", "ConfirmLowConfidenceScreenStub"],
     ["CONFLICTS_PENDING_REVIEW", "ConflictReviewScreenStub"],
     ["AWAITING_REPORT_TYPE_SELECTION", "ReportTypeSelectionScreenStub"],
     ["DRAFT_PENDING_REVIEW", "DraftReviewScreenStub"],
     ["COMPLETED", "FinalDownloadScreenStub"],
+    ["FAILED", "FailedScreenStub"],
   ] as const)("dispatches %s to %s", (state, expectedStub) => {
     mockUseWorkflow({ workflow: workflow({ currentState: state }) });
     renderAt("w1");
     expect(screen.getByText(expectedStub)).toBeInTheDocument();
   });
 
-  it.each(["PENDING_HUMAN_CONFIRMATION", "TRANSCRIPT_INSUFFICIENT"] as const)(
-    "shows the 'not built yet' notice for %s",
-    (state) => {
-      mockUseWorkflow({ workflow: workflow({ currentState: state }) });
-      renderAt("w1");
-      expect(screen.getByText(/nog niet gebouwd is/)).toBeInTheDocument();
-    },
-  );
+  it.each(["TRANSCRIPT_INSUFFICIENT"] as const)("shows the 'not built yet' notice for %s", (state) => {
+    mockUseWorkflow({ workflow: workflow({ currentState: state }) });
+    renderAt("w1");
+    expect(screen.getByText(/nog niet gebouwd is/)).toBeInTheDocument();
+  });
 
   it("shows a plain terminal notice for CANCELLED", () => {
     mockUseWorkflow({ workflow: workflow({ currentState: "CANCELLED" }) });
@@ -98,10 +102,16 @@ describe("routes/WorkflowPage", () => {
     expect(screen.getByText("Deze workflow is geannuleerd.")).toBeInTheDocument();
   });
 
-  it("shows a plain terminal notice for FAILED", () => {
-    mockUseWorkflow({ workflow: workflow({ currentState: "FAILED" }) });
+  it("shows the job status hint for a transient state with no screen", () => {
+    mockUseWorkflow({ workflow: workflow({ currentState: "MERGING" }) });
     renderAt("w1");
-    expect(screen.getByText("Deze workflow is mislukt.")).toBeInTheDocument();
+    expect(screen.getByText("JobStatusHintStub")).toBeInTheDocument();
+  });
+
+  it("does not show the job status hint for a non-transient state", () => {
+    mockUseWorkflow({ workflow: workflow({ currentState: "DRAFT_PENDING_REVIEW" }) });
+    renderAt("w1");
+    expect(screen.queryByText("JobStatusHintStub")).not.toBeInTheDocument();
   });
 
   it("shows the slow-poll hint once elapsed time passes the threshold, for a transient state with no screen", () => {
@@ -116,10 +126,11 @@ describe("routes/WorkflowPage", () => {
     expect(screen.queryByText(/Draait de worker/)).not.toBeInTheDocument();
   });
 
-  it("shows the slow-poll hint alongside a screen when that screen's state is also transient", () => {
+  it("shows the job status hint and slow-poll hint alongside a screen when that screen's state is also transient", () => {
     mockUseWorkflow({ workflow: workflow({ currentState: "VALIDATING_TRANSCRIPT" }), pollingElapsedMs: 15000 });
     renderAt("w1");
     expect(screen.getByText("UploadScreenStub")).toBeInTheDocument();
+    expect(screen.getByText("JobStatusHintStub")).toBeInTheDocument();
     expect(screen.getByText(/Draait de worker/)).toBeInTheDocument();
   });
 });

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { explainConflict, getConflicts, restartUpload, type Conflict, type Workflow } from "../../api-client/client";
+import { translateError } from "../../api-client/translateError";
 
 // Rendered by WorkflowPage for CONFLICTS_PENDING_REVIEW. Per
 // approval/conflictResolution.ts's explainConflict(): the workflow only
@@ -25,7 +26,7 @@ export function ConflictReviewScreen({
   function refresh() {
     getConflicts(workflow.id)
       .then(setConflicts)
-      .catch((err) => setLoadError(err instanceof Error ? err.message : "Onbekende fout"));
+      .catch((err) => setLoadError(translateError(err)));
   }
 
   useEffect(refresh, [workflow.id]);
@@ -43,7 +44,7 @@ export function ConflictReviewScreen({
         refresh();
       }
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Onbekende fout");
+      setActionError(translateError(err));
     } finally {
       setSubmittingId(null);
     }
@@ -56,7 +57,7 @@ export function ConflictReviewScreen({
       const updated = await restartUpload(workflow.id, { actorId: currentUserId });
       onUpdated(updated);
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Onbekende fout");
+      setActionError(translateError(err));
     } finally {
       setRestarting(false);
     }
@@ -69,63 +70,69 @@ export function ConflictReviewScreen({
   const resolved = conflicts.filter((c) => c.status === "RESOLVED");
 
   return (
-    <div>
-      <h2>Openstaande conflicten</h2>
-      {open.length === 0 && <p>Geen openstaande conflicten.</p>}
-      {open.map((conflict) => (
-        <div key={conflict.id}>
-          <p>{conflict.description}</p>
-          {(conflict.sourceA || conflict.sourceB) && (
-            <div style={{ display: "flex", gap: "1rem" }}>
-              <div>
-                <strong>Bron A</strong>
-                <p>{conflict.sourceA ?? "-"}</p>
+    <div className="page">
+      <div className="section">
+        <h2>Openstaande conflicten</h2>
+        {open.length === 0 && <p>Geen openstaande conflicten.</p>}
+        {open.map((conflict) => (
+          <div key={conflict.id} className="section">
+            <p>{conflict.description}</p>
+            {(conflict.sourceA || conflict.sourceB) && (
+              <div className="conflict-sources">
+                <div>
+                  <strong>Bron A</strong>
+                  <p>{conflict.sourceA ?? "-"}</p>
+                </div>
+                <div>
+                  <strong>Bron B</strong>
+                  <p>{conflict.sourceB ?? "-"}</p>
+                </div>
               </div>
-              <div>
-                <strong>Bron B</strong>
-                <p>{conflict.sourceB ?? "-"}</p>
-              </div>
+            )}
+            <div className="field">
+              <label htmlFor={`explanation-${conflict.id}`}>Toelichting</label>
+              <textarea
+                id={`explanation-${conflict.id}`}
+                value={explanations[conflict.id] ?? ""}
+                onChange={(event) => setExplanations((prev) => ({ ...prev, [conflict.id]: event.target.value }))}
+                rows={3}
+              />
             </div>
-          )}
-          <label>
-            Toelichting
-            <textarea
-              value={explanations[conflict.id] ?? ""}
-              onChange={(event) => setExplanations((prev) => ({ ...prev, [conflict.id]: event.target.value }))}
-              rows={3}
-            />
-          </label>
-          <button
-            type="button"
-            onClick={() => handleExplain(conflict.id)}
-            disabled={submittingId === conflict.id || !(explanations[conflict.id]?.trim())}
-          >
-            Verklaren
+            <div className="actions">
+              <button
+                type="button"
+                className="button-primary"
+                onClick={() => handleExplain(conflict.id)}
+                disabled={submittingId === conflict.id || !(explanations[conflict.id]?.trim())}
+              >
+                Verklaren
+              </button>
+            </div>
+          </div>
+        ))}
+
+        {resolved.length > 0 && (
+          <>
+            <h3>Opgelost</h3>
+            {resolved.map((conflict) => (
+              <div key={conflict.id}>
+                <p>{conflict.description}</p>
+                <p>
+                  <em>Verklaring: {conflict.resolution}</em>
+                </p>
+              </div>
+            ))}
+          </>
+        )}
+
+        {actionError && <p role="alert">{actionError}</p>}
+
+        <div className="actions">
+          <button type="button" className="button-secondary" onClick={handleRestartUpload} disabled={restarting}>
+            Upload opnieuw starten
           </button>
         </div>
-      ))}
-
-      {resolved.length > 0 && (
-        <>
-          <h3>Opgelost</h3>
-          {resolved.map((conflict) => (
-            <div key={conflict.id}>
-              <p>{conflict.description}</p>
-              <p>
-                <em>Verklaring: {conflict.resolution}</em>
-              </p>
-            </div>
-          ))}
-        </>
-      )}
-
-      {actionError && <p role="alert">{actionError}</p>}
-
-      <p>
-        <button type="button" onClick={handleRestartUpload} disabled={restarting}>
-          Upload opnieuw starten
-        </button>
-      </p>
+      </div>
     </div>
   );
 }

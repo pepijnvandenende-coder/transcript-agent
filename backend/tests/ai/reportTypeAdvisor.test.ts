@@ -1,45 +1,82 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ReportTypeAdvisorEnvelopeSchema } from "../../src/ai/skillEnvelope";
 import { run, SCHEMA_VERSION, SKILL_NAME } from "../../src/ai/skills/reportTypeAdvisor";
 
-// Phase 6 locked decision: this skill is a deterministic stub, not a real
-// LLM call -- these tests only need to confirm its output shape, determinism,
-// and category branching. Confidence is fixed and unused for routing
-// (ReportTypeAdvisor's policy is MANDATORY unconditionally). The skill stays
-// a pure function (no DB access) -- the catalog's Dutch display names are
-// passed in by the caller (jobs/runners/suggestReportTypeRunner.ts), so
-// tests supply them directly too.
-const LABELS = { thematicLabel: "Thematisch gespreksverslag", qaLabel: "Vraag & antwoord gespreksverslag" };
+// Phase 13: replaces the Phase 6 heuristic stub (a bare `.includes("?")`
+// check) with a real Anthropic API call, same mocking pattern as
+// tests/ai/draftGenerator.test.ts -- prompt construction and response
+// parsing are exercised, not the real model.
+const createMock = vi.fn();
+vi.mock("../../src/ai/anthropicClient", () => ({
+  getAnthropicClient: () => ({ messages: { create: createMock } }),
+}));
 
-describe("reportTypeAdvisor (stub)", () => {
-  it("returns an envelope that validates against the shared schema", () => {
-    const envelope = run("some merged content", LABELS);
+const POLICIES = [
+  { key: "thematic", displayName: "Thematisch gespreksverslag" },
+  { key: "qa", displayName: "Vraag & antwoord gespreksverslag" },
+];
+
+function mockLlmResponse(output: { suggested_type: string; rationale: string; runner_up: string }) {
+  createMock.mockResolvedValue({ content: [{ type: "text", text: JSON.stringify(output) }] });
+}
+
+describe("reportTypeAdvisor (real LLM, mocked client)", () => {
+  beforeEach(() => {
+    createMock.mockReset();
+  });
+
+  it("returns an envelope that validates against the shared schema", async () => {
+    mockLlmResponse({ suggested_type: "qa", rationale: "Bevat vraag-en-antwoordparen.", runner_up: "thematic" });
+
+    const envelope = await run("some merged content", { policies: POLICIES });
     const parsed = ReportTypeAdvisorEnvelopeSchema.safeParse(envelope);
     expect(parsed.success).toBe(true);
     expect(envelope.skill).toBe(SKILL_NAME);
     expect(envelope.schema_version).toBe(SCHEMA_VERSION);
   });
 
-  it("is deterministic for the same input", () => {
-    const a = run("the same merged content", LABELS);
-    const b = run("the same merged content", LABELS);
-    expect(a).toEqual(b);
+  it("constrains the output schema's suggested_type/runner_up enums to the given catalog keys", async () => {
+    mockLlmResponse({ suggested_type: "thematic", rationale: "x", runner_up: "qa" });
+
+    await run("content", { policies: POLICIES });
+
+    const call = createMock.mock.calls[0][0];
+    const schema = call.output_config.format.schema;
+    expect(schema.properties.suggested_type.enum).toEqual(["thematic", "qa"]);
+    expect(schema.properties.runner_up.enum).toEqual(["thematic", "qa"]);
   });
 
-  it("suggests the Q&A policy when the content contains explicit questions", () => {
-    const envelope = run("Wat is de status van dit project? En wie is verantwoordelijk?", LABELS);
-    expect(envelope.result.suggested_type).toBe(LABELS.qaLabel);
-    expect(envelope.result.runner_up).toBe(LABELS.thematicLabel);
+  it("includes the catalog and merged content in the user message", async () => {
+    mockLlmResponse({ suggested_type: "thematic", rationale: "x", runner_up: "qa" });
+
+    await run("de kern van het gesprek", { policies: POLICIES });
+
+    const call = createMock.mock.calls[0][0];
+    const userMessage = call.messages[0].content as string;
+    expect(userMessage).toContain("thematic: Thematisch gespreksverslag");
+    expect(userMessage).toContain("qa: Vraag & antwoord gespreksverslag");
+    expect(userMessage).toContain("de kern van het gesprek");
   });
 
-  it("defaults to the thematic policy when there are no explicit questions", () => {
-    const envelope = run("Een overzicht van de besproken onderwerpen tijdens het overleg.", LABELS);
-    expect(envelope.result.suggested_type).toBe(LABELS.thematicLabel);
-    expect(envelope.result.runner_up).toBe(LABELS.qaLabel);
+  it("parses the model's suggested_type, rationale, and runner_up into the result", async () => {
+    mockLlmResponse({
+      suggested_type: "qa",
+      rationale: "De inhoud bestaat vooral uit vragen met antwoorden.",
+      runner_up: "thematic",
+    });
+
+    const envelope = await run("content", { policies: POLICIES });
+
+    expect(envelope.result.suggested_type).toBe("qa");
+    expect(envelope.result.rationale).toBe("De inhoud bestaat vooral uit vragen met antwoorden.");
+    expect(envelope.result.runner_up).toBe("thematic");
   });
 
-  it("always includes a non-empty rationale", () => {
-    const envelope = run("anything", LABELS);
-    expect(envelope.result.rationale.length).toBeGreaterThan(0);
+  it("has a fixed high confidence, since ReportTypeAdvisor is a MANDATORY skill where confidence is never consulted", async () => {
+    mockLlmResponse({ suggested_type: "thematic", rationale: "x", runner_up: "qa" });
+
+    const envelope = await run("content", { policies: POLICIES });
+
+    expect(envelope.confidence).toBe(1);
   });
 });

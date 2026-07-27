@@ -39,9 +39,10 @@ export async function runGenerateDraftJob(job: JobRunnerInput): Promise<JobRunne
   const sections = (merge.mergedSections as unknown as Array<{ content: string }>) ?? [];
   const mergedContent = sections.map((section) => section.content).join("\n");
 
-  const envelope = draftGenerator.run({
+  const envelope = await draftGenerator.run({
     mergedContent,
     policyKey: policy.key,
+    promptRef: policy.promptRef,
     subject: workflow.title,
     date: workflow.createdAt.toISOString().slice(0, 10),
   });

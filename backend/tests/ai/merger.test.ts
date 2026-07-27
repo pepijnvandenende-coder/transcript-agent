@@ -45,4 +45,13 @@ describe("merger (stub)", () => {
     const envelope = run("a transcript", "   ");
     expect(envelope.result.merged_sections).toHaveLength(1);
   });
+
+  // Phase 13: approval/policyResolver.ts's Merger semantic hook reads this
+  // field to auto-approve a notes-absent run unconditionally -- see
+  // tests/approval/policyResolver.test.ts.
+  it("reports notes_provided in the result, matching notes-presence", () => {
+    expect(run("a transcript").result.notes_provided).toBe(false);
+    expect(run("a transcript", "   ").result.notes_provided).toBe(false);
+    expect(run("a transcript", "some notes").result.notes_provided).toBe(true);
+  });
 });

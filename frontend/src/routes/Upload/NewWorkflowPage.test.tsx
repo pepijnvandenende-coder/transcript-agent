@@ -24,11 +24,11 @@ describe("routes/Upload/NewWorkflowPage", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole("button", { name: "Aanmaken" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Gespreksverslag starten" })).toBeDisabled();
 
-    fireEvent.change(screen.getByLabelText("Titel"), { target: { value: "Kickoff meeting" } });
+    fireEvent.change(screen.getByLabelText("Naam van de vergadering"), { target: { value: "Kickoff meeting" } });
 
-    expect(screen.getByRole("button", { name: "Aanmaken" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Gespreksverslag starten" })).toBeEnabled();
   });
 
   it("creates the workflow with the current user and navigates to its detail page", async () => {
@@ -49,8 +49,8 @@ describe("routes/Upload/NewWorkflowPage", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.change(screen.getByLabelText("Titel"), { target: { value: "Kickoff meeting" } });
-    fireEvent.click(screen.getByRole("button", { name: "Aanmaken" }));
+    fireEvent.change(screen.getByLabelText("Naam van de vergadering"), { target: { value: "Kickoff meeting" } });
+    fireEvent.click(screen.getByRole("button", { name: "Gespreksverslag starten" }));
 
     await waitFor(() => {
       expect(client.createWorkflow).toHaveBeenCalledWith({ title: "Kickoff meeting", createdById: "u1" });

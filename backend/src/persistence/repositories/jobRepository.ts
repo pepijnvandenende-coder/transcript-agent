@@ -40,6 +40,28 @@ export async function claimNextQueuedJob() {
   return prisma.job.findUniqueOrThrow({ where: { id: candidate.id } });
 }
 
+// Phase 13: backs GET /workflows/:id/jobs/latest -- lets the frontend show
+// *why* a workflow is waiting (queued vs. running) instead of a bare "busy"
+// spinner, and surface the job's own `error` once it's failed.
+export function findLatestJobForWorkflow(workflowId: string) {
+  return prisma.job.findFirst({
+    where: { workflowId },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+// Phase 13: backs POST /workflows/:id/actions/retry-failed-job -- the FAILED
+// state's own most recent failure, specifically (not just "the latest job"),
+// so a retry always targets the job that actually caused FAILED even if an
+// older, already-resolved job row happens to be more recent by some other
+// ordering.
+export function findLatestFailedJobForWorkflow(workflowId: string) {
+  return prisma.job.findFirst({
+    where: { workflowId, status: JobStatus.FAILED },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
 export function markJobSucceeded(jobId: string, params: { resultAiOutputId: string; outputRef?: string }) {
   return prisma.job.update({
     where: { id: jobId },

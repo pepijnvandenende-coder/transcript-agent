@@ -30,6 +30,12 @@ const SEMANTIC_HOOKS: Record<string, (result: Record<string, unknown>) => Policy
     const conflicts = result.conflicts;
     return Array.isArray(conflicts) && conflicts.length > 0 ? "requires_review" : null;
   },
+  // Phase 13: without notes, Merger has nothing to reconcile between two
+  // sources -- its own confidence score reflects that absence, not genuine
+  // merge uncertainty, so it must never open a PENDING_HUMAN_CONFIRMATION
+  // checkpoint. With notes present, this falls through (returns null) to the
+  // normal AUTO_IF_ABOVE confidence check, unchanged.
+  Merger: (result) => (result.notes_provided === false ? "auto_approved" : null),
 };
 
 export async function resolvePolicy(params: {

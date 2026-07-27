@@ -108,12 +108,34 @@ describe("policyResolver.resolvePolicy", () => {
     );
   });
 
-  it("Merger has no semantic hook -- routes purely on confidence vs. its own threshold", async () => {
-    const auto = await resolvePolicy({ skillName: MERGER_SKILL_NAME, result: {}, confidence: 0.85 });
+  it("Merger routes purely on confidence vs. its own threshold when notes were provided", async () => {
+    const auto = await resolvePolicy({
+      skillName: MERGER_SKILL_NAME,
+      result: { notes_provided: true },
+      confidence: 0.85,
+    });
     expect(auto.outcome).toBe("auto_approved");
 
-    const low = await resolvePolicy({ skillName: MERGER_SKILL_NAME, result: {}, confidence: 0.5 });
+    const low = await resolvePolicy({
+      skillName: MERGER_SKILL_NAME,
+      result: { notes_provided: true },
+      confidence: 0.5,
+    });
     expect(low.outcome).toBe("low_confidence");
+  });
+
+  // Phase 13: without notes there is nothing to reconcile between two
+  // sources, so a low confidence score is not genuine merge uncertainty --
+  // this must never open PENDING_HUMAN_CONFIRMATION, regardless of how low
+  // the score is. See src/ai/skills/merger.ts's own comment on why
+  // WITHOUT_NOTES_CONFIDENCE stays a low, threshold-crossing value anyway.
+  it("Merger's semantic hook auto-approves unconditionally when notes were not provided, regardless of confidence", async () => {
+    const resolution = await resolvePolicy({
+      skillName: MERGER_SKILL_NAME,
+      result: { notes_provided: false },
+      confidence: 0.01,
+    });
+    expect(resolution.outcome).toBe("auto_approved");
   });
 
   it("ConflictDetector's semantic hook returns requires_review when conflicts are present, regardless of confidence", async () => {

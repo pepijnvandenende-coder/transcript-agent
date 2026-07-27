@@ -57,6 +57,7 @@ function mergerEnvelope(overrides: { confidence?: number } = {}): MergerEnvelope
     result: {
       merged_sections: [{ heading: "Transcript", content: "x", source: "transcript" }],
       unmatched_notes: [],
+      notes_provided: true,
     },
   };
 }

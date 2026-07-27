@@ -84,6 +84,22 @@ describe("POST /workflows/:id/approval-request/retry and /edit-retry", () => {
     return workflow.id;
   }
 
+  it("returns the open approval request with nested aiOutput and maxRetries", async () => {
+    const workflowId = await workflowAtCheckpoint("Approval Route Get");
+
+    const response = await fetch(`${baseUrl}/workflows/${workflowId}/approval-request`);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      aiOutput: { skillName: string; validationStatus: string; confidenceScore: number | null };
+      maxRetries: number;
+    };
+    expect(body.aiOutput.skillName).toBe(SKILL_NAME);
+    expect(body.aiOutput.validationStatus).toBe("VALID");
+    // computeConfidence(): 0.7 * llmSelfReported(0.5) + 0.3 * structuralScore(0.85 stub) = 0.605.
+    expect(body.aiOutput.confidenceScore).toBeCloseTo(0.605);
+    expect(body.maxRetries).toBe(5);
+  });
+
   it("retries from the checkpoint and returns the workflow back at VALIDATING_TRANSCRIPT", async () => {
     const workflowId = await workflowAtCheckpoint("Approval Route Retry");
 

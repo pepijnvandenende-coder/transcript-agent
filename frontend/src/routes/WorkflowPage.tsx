@@ -1,9 +1,12 @@
 import { useParams } from "react-router-dom";
 import type { Workflow, WorkflowState } from "../api-client/client";
+import { JobStatusHint } from "../components/JobStatusHint";
 import { StatusBadge } from "../components/StatusBadge";
 import { isTransientState, SLOW_HINT_AFTER_MS, useWorkflow } from "../state/useWorkflow";
+import { ConfirmLowConfidenceScreen } from "./ConfirmLowConfidence/ConfirmLowConfidenceScreen";
 import { ConflictReviewScreen } from "./ConflictReview/ConflictReviewScreen";
 import { DraftReviewScreen } from "./DraftReview/DraftReviewScreen";
+import { FailedScreen } from "./Failed/FailedScreen";
 import { FinalDownloadScreen } from "./FinalDownload/FinalDownloadScreen";
 import { ReportTypeSelectionScreen } from "./ReportTypeSelection/ReportTypeSelectionScreen";
 import { UploadScreen } from "./Upload/UploadScreen";
@@ -12,23 +15,22 @@ type ScreenProps = { workflow: Workflow; currentUserId: string; onUpdated: (work
 type ScreenComponent = (props: ScreenProps) => JSX.Element;
 
 // The frontend's own small mirror of the backend's SKILL_ROUTING-style
-// per-state dispatch -- which screen owns which WorkflowState. Extending the
-// operator UI to a state that doesn't have a screen yet (e.g.
-// ConfirmLowConfidence) is exactly one more entry here plus one more
-// component, following the same shape every screen already has.
+// per-state dispatch -- which screen owns which WorkflowState.
 const SCREENS: Partial<Record<WorkflowState, ScreenComponent>> = {
   CREATED: UploadScreen,
   TRANSCRIPT_UPLOADED: UploadScreen,
   VALIDATING_TRANSCRIPT: UploadScreen,
+  PENDING_HUMAN_CONFIRMATION: ConfirmLowConfidenceScreen,
   CONFLICTS_PENDING_REVIEW: ConflictReviewScreen,
   AWAITING_REPORT_TYPE_SELECTION: ReportTypeSelectionScreen,
   DRAFT_PENDING_REVIEW: DraftReviewScreen,
   COMPLETED: FinalDownloadScreen,
+  FAILED: FailedScreen,
 };
 
-// Not requested this phase -- ConfirmLowConfidence stays unbuilt; these
-// states show the same placeholder note Upload already used.
-const NOT_BUILT_STATES = new Set<WorkflowState>(["PENDING_HUMAN_CONFIRMATION", "TRANSCRIPT_INSUFFICIENT"]);
+// Not requested yet -- TRANSCRIPT_INSUFFICIENT stays unbuilt, showing the
+// same placeholder note Upload already used.
+const NOT_BUILT_STATES = new Set<WorkflowState>(["TRANSCRIPT_INSUFFICIENT"]);
 
 // "/workflows/:id" -- the single per-workflow route. Loads + polls via
 // state/useWorkflow.ts, then renders whichever screen owns the current
@@ -50,15 +52,18 @@ export function WorkflowPage({ currentUserId }: { currentUserId: string }) {
       {Screen && <Screen workflow={workflow} currentUserId={currentUserId} onUpdated={setWorkflow} />}
 
       {!Screen && NOT_BUILT_STATES.has(workflow.currentState) && (
-        <p>Dit vraagt om een scherm dat nog niet gebouwd is (ConfirmLowConfidence).</p>
+        <p>Dit vraagt om een scherm dat nog niet gebouwd is.</p>
       )}
 
-      {!Screen && (workflow.currentState === "CANCELLED" || workflow.currentState === "FAILED") && (
-        <p>Deze workflow is {workflow.currentState === "CANCELLED" ? "geannuleerd" : "mislukt"}.</p>
-      )}
+      {!Screen && workflow.currentState === "CANCELLED" && <p>Deze workflow is geannuleerd.</p>}
 
-      {isTransientState(workflow.currentState) && pollingElapsedMs > SLOW_HINT_AFTER_MS && (
-        <p>Dit duurt langer dan verwacht. Draait de worker? (`npm run worker` in de backend)</p>
+      {isTransientState(workflow.currentState) && (
+        <>
+          <JobStatusHint workflowId={workflow.id} />
+          {pollingElapsedMs > SLOW_HINT_AFTER_MS && (
+            <p>Dit duurt langer dan verwacht. Draait de worker? (`npm run worker` in de backend)</p>
+          )}
+        </>
       )}
     </main>
   );
