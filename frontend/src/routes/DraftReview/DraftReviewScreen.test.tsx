@@ -66,6 +66,36 @@ describe("routes/DraftReview/DraftReviewScreen", () => {
     expect(screen.getByText("Detail B")).toBeInTheDocument();
   });
 
+  // Phase 16 item 2: "Acties en vervolgstappen" must render as a real table
+  // (the report prompts already ask the model for a markdown table -- see
+  // ai/prompts/reportTypes/{thematic,qa}.md), not as one <p> per pipe-delimited
+  // line.
+  it("renders a markdown table section as a real <table>, with empty deadline cells left empty", async () => {
+    vi.spyOn(client, "getDrafts").mockResolvedValue([
+      draft({
+        sections: [
+          { heading: "Samenvatting", content: "Kernpunt A" },
+          {
+            heading: "Acties en vervolgstappen",
+            content: "| Actie | Verantwoordelijke | Deadline | Status |\n|---|---|---|---|\n| Actie A | Jan |  | Open |",
+          },
+        ],
+      }),
+    ]);
+
+    renderScreen();
+
+    await screen.findByText("Acties en vervolgstappen");
+    const table = screen.getByRole("table");
+    expect(table).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Deadline" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "Actie A" })).toBeInTheDocument();
+    expect(screen.queryByText(/^\|/)).not.toBeInTheDocument();
+    // The Deadline cell (between "Jan" and "Open") is empty, not a fabricated date.
+    const cells = screen.getAllByRole("cell").map((cell) => cell.textContent);
+    expect(cells).toEqual(["Actie A", "Jan", "", "Open"]);
+  });
+
   // Phase 15 item 2: a passing item must never read as missing just because
   // it was bundled with something that failed -- every checklist item is
   // rendered on its own, with its own ✓/⚠ marker.

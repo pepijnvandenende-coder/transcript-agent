@@ -4,6 +4,7 @@
 // "Risks" section). Requests are relative paths; the Vite dev-server proxy
 // (see vite.config.ts) forwards them to the backend, so no base URL/CORS
 // handling is needed here.
+import { notifySessionInvalid } from "../state/sessionEvents";
 
 export type WorkflowState =
   | "CREATED"
@@ -47,6 +48,14 @@ export class ApiError extends Error {
   constructor(
     public readonly status: number,
     message: string,
+    // Phase 16 item 7: the backend's machine-readable `error` code (distinct
+    // from `message`, which is the human-readable Dutch sentence) -- e.g.
+    // "USER_SESSION_INVALID" from errorHandler.ts's Prisma P2003 handling.
+    // Most existing error responses only ever set `error` to a plain English
+    // sentence (translateError.ts already handles that layer), so `code`
+    // being equal to a human sentence for those is harmless: nothing else
+    // branches on it.
+    public readonly code?: string,
   ) {
     super(message);
     this.name = "ApiError";
@@ -60,14 +69,27 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!response.ok) {
     const body = await response.json().catch(() => null);
-    const message = (body && typeof body === "object" && "error" in body ? String(body.error) : null) ?? response.statusText;
-    throw new ApiError(response.status, message);
+    const code = body && typeof body === "object" && "error" in body ? String(body.error) : undefined;
+    const message =
+      (body && typeof body === "object" && "message" in body ? String(body.message) : null) ?? code ?? response.statusText;
+    const error = new ApiError(response.status, message, code);
+    if (code === "USER_SESSION_INVALID") {
+      notifySessionInvalid();
+    }
+    throw error;
   }
   return response.json() as Promise<T>;
 }
 
 export function createUser(params: { name: string; email: string }): Promise<User> {
   return apiFetch<User>("/users", { method: "POST", body: JSON.stringify(params) });
+}
+
+// Phase 16 item 7: lets the frontend confirm a localStorage-remembered user
+// still exists before trusting it -- see state/currentUser.ts's validation
+// effect.
+export function getUser(userId: string): Promise<User> {
+  return apiFetch<User>(`/users/${userId}`);
 }
 
 export function createWorkflow(params: { title: string; createdById: string }): Promise<Workflow> {

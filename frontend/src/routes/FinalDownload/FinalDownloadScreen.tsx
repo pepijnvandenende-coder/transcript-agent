@@ -10,10 +10,11 @@ import { translateError } from "../../api-client/translateError";
 // Phase 16: no cancel control on this screen (either branch) -- COMPLETED is
 // a terminal FSM state (workflow/transitions.ts's CANCEL_TRANSITIONS only
 // covers non-terminal states), so "Workflow annuleren" here was already a
-// dead control that would fail with an FSM error if clicked. The operator
-// doesn't need file-format/timestamp details either -- just the title,
-// status (shown by the shared Layout, not duplicated here), and one primary
-// download action.
+// dead control that would fail with an FSM error if clicked. The report's
+// own title, format, and timestamp aren't shown either (Phase 16 plan item
+// 6, "geen overbodige informatie") -- getFinalReport() is still called, but
+// only to know whether the file is ready yet; the visible copy is the fixed
+// "Uw gespreksverslag is gereed." plus one centered primary download action.
 export function FinalDownloadScreen({
   workflow,
   currentUserId,
@@ -60,9 +61,9 @@ export function FinalDownloadScreen({
   }
 
   return (
-    <div className="section">
-      <h2>{finalReport.title}</h2>
-      <div className="actions">
+    <div className="section section-centered">
+      <p>Uw gespreksverslag is gereed.</p>
+      <div className="actions actions-centered">
         <a href={finalReportDownloadUrl(workflow.id)} download className="button-primary">
           Download gespreksverslag
         </a>

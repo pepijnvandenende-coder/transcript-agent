@@ -14,6 +14,7 @@ Instructies:
 - Vermijd assurance-taal (zoals "beoordelen" of "vaststellen") indien het om een verkennend/adviesgesprek gaat
 - Zet geen bronverwijzing achter iedere zin
 - Gebruik geen scheidingslijnen tussen de onderwerpen in de notulen
+- Vul in de actietabel een deadline alleen in als deze letterlijk in de brontekst of aantekeningen wordt genoemd; is er geen deadline genoemd, laat de deadline-cel dan leeg (schrijf geen "nog niet bekend", "nog te bepalen" of vergelijkbare tekst)
 
 Structuur:
 

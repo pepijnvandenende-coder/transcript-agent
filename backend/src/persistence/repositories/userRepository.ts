@@ -18,3 +18,10 @@ export async function findOrCreateUserByEmail(params: { name: string; email: str
     },
   });
 }
+
+// Phase 16 item 7: lets the frontend confirm a localStorage-remembered user
+// still exists before trusting it (e.g. after test data was cleaned up
+// server-side) -- see api/users.routes.ts's GET /:id.
+export function findUserById(id: string) {
+  return prisma.user.findUnique({ where: { id } });
+}

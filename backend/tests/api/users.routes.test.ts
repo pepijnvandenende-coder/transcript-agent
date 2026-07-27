@@ -85,4 +85,44 @@ describe("Phase 10 users API", () => {
     });
     expect(response.status).toBe(400);
   });
+
+  // Phase 16 item 7: lets the frontend confirm a localStorage-remembered user
+  // still exists before trusting it for a new action.
+  it("GET /users/:id returns the user when it exists", async () => {
+    const email = `users-route-test-${randomUUID()}@example.com`;
+    const created = await fetch(`${baseUrl}/users`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Get By Id", email }),
+    });
+    const { id } = (await created.json()) as { id: string };
+    createdUserIds.push(id);
+
+    const response = await fetch(`${baseUrl}/users/${id}`);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { id: string };
+    expect(body.id).toBe(id);
+  });
+
+  it("GET /users/:id returns 404 for a user that doesn't exist", async () => {
+    const response = await fetch(`${baseUrl}/users/${randomUUID()}`);
+    expect(response.status).toBe(404);
+  });
+
+  // Phase 16 item 7: a deleted/nonexistent user's id hitting a foreign key
+  // (e.g. via POST /workflows) must come back as a clear USER_SESSION_INVALID
+  // error, not a raw "Internal server error" -- see api/errorHandler.ts's
+  // Prisma P2003 handling.
+  it("POST /workflows with a createdById that doesn't exist returns USER_SESSION_INVALID, not a raw 500", async () => {
+    const response = await fetch(`${baseUrl}/workflows`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "Orphaned session test", createdById: randomUUID() }),
+    });
+
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error: string; message: string };
+    expect(body.error).toBe("USER_SESSION_INVALID");
+    expect(body.message).toBe("De gebruiker bestaat niet meer. Maak opnieuw een sessie aan.");
+  });
 });

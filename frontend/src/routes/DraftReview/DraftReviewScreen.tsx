@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { getDrafts, reviewDraft, type Draft, type DraftPrecheck, type Workflow } from "../../api-client/client";
 import { translateError } from "../../api-client/translateError";
 import { BackOrCancel } from "../../components/BackOrCancel";
+import { parseContentBlocks } from "../../rendering/parseContentBlocks";
 
 // Phase 15 item 2: showing only the failing items (as one summarizing
 // sentence) made correct items read as "missing" whenever they happened to
@@ -20,6 +21,54 @@ function PrecheckChecklist({ precheck }: { precheck: DraftPrecheck }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+// Phase 16 item 2: "Acties en vervolgstappen" (and any other section whose
+// content is a markdown table -- the report prompts already ask the model
+// for one, see ai/prompts/reportTypes/{thematic,qa}.md) must render as a
+// real table, not one <p> per pipe-delimited line. Bullet lists get the same
+// treatment for the same reason (e.g. "Openstaande vragen"); anything else
+// still renders as plain paragraphs, same as before.
+function SectionContent({ content }: { content: string }) {
+  const blocks = parseContentBlocks(content);
+  return (
+    <>
+      {blocks.map((block, index) => {
+        if (block.type === "table") {
+          return (
+            <table key={index}>
+              <thead>
+                <tr>
+                  {block.headers.map((header, headerIndex) => (
+                    <th key={headerIndex}>{header}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {block.rows.map((row, rowIndex) => (
+                  <tr key={rowIndex}>
+                    {row.map((cell, cellIndex) => (
+                      <td key={cellIndex}>{cell}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          );
+        }
+        if (block.type === "bullets") {
+          return (
+            <ul key={index}>
+              {block.items.map((item, itemIndex) => (
+                <li key={itemIndex}>{item}</li>
+              ))}
+            </ul>
+          );
+        }
+        return <p key={index}>{block.text}</p>;
+      })}
+    </>
   );
 }
 
@@ -102,13 +151,7 @@ export function DraftReviewScreen({
         {draft.sections.map((section) => (
           <section key={section.heading}>
             <h3>{section.heading}</h3>
-            {section.content
-              .split("\n")
-              .map((line) => line.trim())
-              .filter((line) => line.length > 0)
-              .map((line, index) => (
-                <p key={index}>{line}</p>
-              ))}
+            <SectionContent content={section.content} />
           </section>
         ))}
       </div>

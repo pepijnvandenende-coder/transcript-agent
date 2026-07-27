@@ -4,6 +4,7 @@ import type { DraftSection } from "../../ai/skillEnvelope";
 import { handleSkillOutput } from "../../approval/gateway";
 import { validateDraftStructure } from "../../approval/reportStructureValidator";
 import { createDraftVersion, findLatestDraft } from "../../persistence/repositories/draftRepository";
+import { findLatestMerge } from "../../persistence/repositories/mergeRepository";
 import { findFeedbackForDraft } from "../../persistence/repositories/reviewFeedbackRepository";
 import { findPolicyByKey } from "../../persistence/repositories/reportTypePolicyRepository";
 import type { JobRunnerInput, JobRunnerResult } from "../worker";
@@ -15,6 +16,15 @@ import type { JobRunnerInput, JobRunnerResult } from "../worker";
 // (it reads drafted output + review_feedback, not a transcript/notes
 // version), so no ai_output_inputs lineage is written here, matching that
 // scope decision.
+//
+// Phase 16 item 4: a revision now regenerates the full document from the
+// original source again -- transcript+notes (via the same `merges` output
+// draftGenerationRunner.ts drafted from), the current draft, and the
+// reviewer feedback -- rather than asking the model to patch the previous
+// draft in isolation. Without the original source, the model has nothing to
+// fall back on but the prior draft's own prose, which is exactly what made
+// the Phase 8 stub (and a source-blind LLM call would too) unable to make
+// real structural changes stick.
 export async function runReviseDraftJob(job: JobRunnerInput): Promise<JobRunnerResult> {
   const previousDraft = await findLatestDraft(job.workflowId);
   if (!previousDraft) {
@@ -28,9 +38,19 @@ export async function runReviseDraftJob(job: JobRunnerInput): Promise<JobRunnerR
     throw new Error(`No report_type_policies row for key "${previousDraft.reportType}" (job ${job.id})`);
   }
 
+  const merge = await findLatestMerge(job.workflowId);
+  if (!merge) {
+    throw new Error(`Workflow ${job.workflowId} has no merged output to revise from (job ${job.id})`);
+  }
+  const mergedSections = (merge.mergedSections as unknown as Array<{ content: string }>) ?? [];
+  const mergedContent = mergedSections.map((section) => section.content).join("\n");
+
   const feedback = await findFeedbackForDraft(previousDraft.id);
 
-  const envelope = draftReviser.run({
+  const envelope = await draftReviser.run({
+    mergedContent,
+    promptRef: policy.promptRef,
+    subject: previousDraft.subject,
     previousSections: previousDraft.sections as unknown as DraftSection[],
     feedbackItems: feedback.map((entry) => entry.feedback),
   });
@@ -43,6 +63,11 @@ export async function runReviseDraftJob(job: JobRunnerInput): Promise<JobRunnerR
     schemaVersion: draftReviser.SCHEMA_VERSION,
     retryOfAiOutputId: job.retryOfAiOutputId ?? undefined,
     retryMode: job.retryMode ?? undefined,
+    // Phase 16 item 5: relaxed -- a reviewer's feedback may deliberately
+    // deviate from the report type's standard sections (drop them,
+    // restructure them), and that deliberate choice must not be rejected by
+    // the same gate that enforces the standard format on first generation.
+    // Basic header facts (title/attendees/date/subject) stay mandatory.
     additionalValidation: () =>
       validateDraftStructure(
         {
@@ -53,6 +78,7 @@ export async function runReviseDraftJob(job: JobRunnerInput): Promise<JobRunnerR
           sections: envelope.result.sections,
         },
         policy,
+        { skipContentSections: true },
       ),
   });
 

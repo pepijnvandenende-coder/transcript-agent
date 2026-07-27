@@ -160,4 +160,29 @@ describe("reportStructureValidator", () => {
     expect(result.valid).toBe(true);
     expect(result.errors).toBeUndefined();
   });
+
+  // Phase 16 item 5: a revision may deliberately drop or restructure a
+  // standard section (e.g. "verwijder acties en vervolgstappen") -- the
+  // relaxed { skipContentSections: true } mode used for DraftReviser must
+  // accept that instead of treating it as a schema failure.
+  describe("skipContentSections (revision)", () => {
+    it("passes even when a required content section (Samenvatting) is missing entirely", () => {
+      const draft = {
+        ...baseDraft,
+        sections: [{ heading: "Notulen", content: "Alleen een informatief gesprek, geen vervolgacties." }],
+      };
+      expect(validateDraftStructure(draft, thematicPolicy).valid).toBe(false);
+      expect(validateDraftStructure(draft, thematicPolicy, { skipContentSections: true }).valid).toBe(true);
+    });
+
+    it("passes even when zero topic/body sections remain", () => {
+      const draft = { ...baseDraft, sections: [] };
+      expect(validateDraftStructure(draft, thematicPolicy, { skipContentSections: true }).valid).toBe(true);
+    });
+
+    it("still fails when a basic header fact (title/attendees/date/subject) is missing", () => {
+      const draft = { ...baseDraft, title: "", sections: [] };
+      expect(validateDraftStructure(draft, thematicPolicy, { skipContentSections: true }).valid).toBe(false);
+    });
+  });
 });

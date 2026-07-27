@@ -88,6 +88,16 @@ h3 {
   margin-top: 0;
 }
 
+/* Phase 16 item 6: the final download screen's content, centered rather than
+   flush left -- see routes/FinalDownload/FinalDownloadScreen.tsx. */
+.section-centered {
+  text-align: center;
+}
+
+.actions-centered {
+  justify-content: center;
+}
+
 .field {
   display: flex;
   flex-direction: column;
@@ -181,6 +191,28 @@ button:disabled {
 [role="alert"] {
   color: var(--color-danger);
   font-weight: 500;
+}
+
+/* Phase 16 item 2: real tables for sections like "Acties en vervolgstappen"
+   (see routes/DraftReview/DraftReviewScreen.tsx's SectionContent), instead
+   of raw pipe-delimited text. */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--space-sm) 0;
+}
+
+th,
+td {
+  text-align: left;
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--color-border);
+  vertical-align: top;
+}
+
+th {
+  background: var(--color-bg);
+  font-weight: 600;
 }
 
 .conflict-sources {

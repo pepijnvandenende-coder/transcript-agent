@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { onSessionInvalid } from "../state/sessionEvents";
 import {
   ApiError,
   cancelWorkflow,
@@ -11,6 +12,7 @@ import {
   getDrafts,
   getFinalReport,
   getReportTypeSuggestion,
+  getUser,
   getWorkflow,
   restartUpload,
   reviewDraft,
@@ -193,6 +195,49 @@ describe("api-client/client", () => {
 
   it("finalReportDownloadUrl builds the download path without calling fetch", () => {
     expect(finalReportDownloadUrl("w1")).toBe("/workflows/w1/final-report/download");
+  });
+
+  it("getUser issues a GET to /users/:id", async () => {
+    const fetchMock = mockFetchOnce(200, { id: "u1", name: "Jan", email: "jan@example.com", role: "member" });
+
+    const user = await getUser("u1");
+
+    expect(fetchMock).toHaveBeenCalledWith("/users/u1", expect.anything());
+    expect(user.id).toBe("u1");
+  });
+
+  // Phase 16 item 7: a USER_SESSION_INVALID response (backend's
+  // errorHandler.ts, on a Prisma P2003 foreign-key failure) carries a
+  // human-readable `message` distinct from the machine-readable `error`
+  // code, and must notify state/sessionEvents.ts so useCurrentUser() can
+  // recover regardless of which screen triggered the failing call.
+  it("throws an ApiError with the human message and machine code, and notifies onSessionInvalid, on USER_SESSION_INVALID", async () => {
+    mockFetchOnce(400, { error: "USER_SESSION_INVALID", message: "De gebruiker bestaat niet meer. Maak opnieuw een sessie aan." });
+    const listener = vi.fn();
+    const unsubscribe = onSessionInvalid(listener);
+
+    try {
+      await expect(createWorkflow({ title: "x", createdById: "gone" })).rejects.toMatchObject({
+        message: "De gebruiker bestaat niet meer. Maak opnieuw een sessie aan.",
+        code: "USER_SESSION_INVALID",
+      });
+      expect(listener).toHaveBeenCalledTimes(1);
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it("does not notify onSessionInvalid for an unrelated error", async () => {
+    mockFetchOnce(404, { error: "Workflow not found" });
+    const listener = vi.fn();
+    const unsubscribe = onSessionInvalid(listener);
+
+    try {
+      await expect(getWorkflow("missing")).rejects.toBeInstanceOf(ApiError);
+      expect(listener).not.toHaveBeenCalled();
+    } finally {
+      unsubscribe();
+    }
   });
 
   it("cancelWorkflow posts to /workflows/:id/cancel", async () => {

@@ -87,14 +87,28 @@ export function checkDraftStructure(
   return items;
 }
 
-// The blocking gate DraftGenerator's output must pass (additionalValidation
-// in approval/gateway.ts's handleSkillOutput) before it's accepted as
-// schema-valid.
+// Phase 16 item 5: a revision is a deliberate human choice, so a reviewer
+// asking DraftReviser to drop or restructure a standard section (e.g.
+// "verwijder acties en vervolgstappen omdat dit gesprek alleen informatief
+// was") must not be rejected by the same gate that enforces the standard
+// format on first generation. `skipContentSections` keeps the basic header
+// facts mandatory (a title/date/subject/attendee list is never a stylistic
+// choice) while dropping the requiredSections/bodyContentRule checks, which
+// only make sense when the draft is still expected to follow the catalog's
+// default shape.
+const HEADER_ITEMS = new Set(["Titel", "Aanwezige deelnemers", "Datum", "Onderwerp"]);
+
+// The blocking gate DraftGenerator's (and, in relaxed form, DraftReviser's)
+// output must pass (additionalValidation in approval/gateway.ts's
+// handleSkillOutput) before it's accepted as schema-valid.
 export function validateDraftStructure(
   draft: DraftStructureInput,
   policy: ReportTypeValidationPolicy,
+  options?: { skipContentSections?: boolean },
 ): SchemaCheckResult {
-  const failed = checkDraftStructure(draft, policy).filter((item) => !item.passed);
+  const items = checkDraftStructure(draft, policy);
+  const relevant = options?.skipContentSections ? items.filter((item) => HEADER_ITEMS.has(item.item)) : items;
+  const failed = relevant.filter((item) => !item.passed);
   if (failed.length > 0) {
     return { valid: false, errors: failed.map((item) => `Missing or empty required part: ${item.item}`) };
   }

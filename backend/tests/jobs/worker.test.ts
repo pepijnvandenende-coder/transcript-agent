@@ -5,25 +5,33 @@ import { ActorType, JobStatus, JobType, PolicyType } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { retryApprovalRequest } from "../../src/approval/gateway";
 
-// DraftGenerator (Phase 11), ReportTypeAdvisor (Phase 13), and
-// DraftQualityPrecheck (Phase 14) all call the real Anthropic API -- mocked
-// here so this real-Postgres integration suite stays network-free. All
-// three skills share the same getAnthropicClient(), so the mock branches on
-// the request's own output_config.format.schema (each skill asks for a
-// differently-shaped structured output) rather than returning one fixed
-// response for every call. The DraftGenerator branch's response includes
-// both required Dutch section headings with non-empty content, plus a
-// non-empty attendees list, since the downstream DraftQualityPrecheck job
-// (also exercised below) now structurally validates title/attendees/date/
-// subject too. The ReportTypeAdvisor branch returns "thematic", a key both
-// report_type_policies rows seeded in beforeAll actually have.
+// DraftGenerator (Phase 11), ReportTypeAdvisor (Phase 13),
+// DraftQualityPrecheck (Phase 14), and DraftReviser (Phase 16) all call the
+// real Anthropic API -- mocked here so this real-Postgres integration suite
+// stays network-free. All four skills share the same getAnthropicClient(),
+// so the mock branches on the request's own output_config.format.schema
+// (each skill asks for a differently-shaped structured output) rather than
+// returning one fixed response for every call. The DraftGenerator branch's
+// response includes both required Dutch section headings with non-empty
+// content, plus a non-empty attendees list, since the downstream
+// DraftQualityPrecheck job (also exercised below) now structurally validates
+// title/attendees/date/subject too. The ReportTypeAdvisor branch returns
+// "thematic", a key both report_type_policies rows seeded in beforeAll
+// actually have. The DraftReviser branch echoes the reviewer feedback it was
+// given back into the Notulen section, so the "REVISE_DRAFT job" test below
+// can assert the feedback genuinely reached the model and came back out in
+// the new draft version, without hardcoding the exact prose.
 vi.mock("../../src/ai/anthropicClient", () => ({
   getAnthropicClient: () => ({
     messages: {
-      create: vi.fn().mockImplementation((params: { output_config?: { format?: { schema?: { properties?: Record<string, unknown> } } } }) => {
+      create: vi.fn().mockImplementation((params: {
+        output_config?: { format?: { schema?: { properties?: Record<string, unknown> } } };
+        messages: Array<{ content: string }>;
+      }) => {
         const properties = params.output_config?.format?.schema?.properties ?? {};
         const isReportTypeClassification = "suggested_type" in properties;
         const isDraftQualityPrecheck = "factually_grounded" in properties;
+        const isDraftReviser = "changes_applied" in properties;
         if (isReportTypeClassification) {
           return Promise.resolve({
             content: [
@@ -45,6 +53,26 @@ vi.mock("../../src/ai/anthropicClient", () => ({
                   subject_correct: true,
                   factually_grounded: true,
                   issues: [],
+                }),
+              },
+            ],
+          });
+        }
+        if (isDraftReviser) {
+          const userMessage = params.messages[0].content;
+          const feedbackMatch = userMessage.match(/Feedback van de reviewer op deze conceptversie:\n\n([\s\S]+)$/);
+          const feedbackText = feedbackMatch ? feedbackMatch[1].trim() : "";
+          return Promise.resolve({
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  sections: [
+                    { heading: "Samenvatting", content: "Kernpunten van het gesprek." },
+                    { heading: "Notulen", content: `Gedetailleerde weergave van het gesprek.\n\n${feedbackText}` },
+                  ],
+                  changes_applied: [feedbackText],
+                  unresolved_feedback: [],
                 }),
               },
             ],

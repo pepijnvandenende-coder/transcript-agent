@@ -47,15 +47,16 @@ describe("routes/FinalDownload/FinalDownloadScreen", () => {
     vi.restoreAllMocks();
   });
 
-  // Phase 16 item 3: no technical file-format/timestamp details, and no
-  // second (dead -- COMPLETED is a terminal FSM state) cancel control --
-  // just the title and one primary download action.
-  it("shows the report title and a single primary download action, with no technical details", async () => {
+  // Phase 16 item 6: no report title, format, or timestamp -- just the fixed
+  // "gereed" message and one centered primary download action. No second
+  // (dead -- COMPLETED is a terminal FSM state) cancel control either.
+  it("shows the fixed 'gereed' message and a single primary download action, with no technical details", async () => {
     vi.spyOn(client, "getFinalReport").mockResolvedValue(finalReport());
 
     renderScreen();
 
-    await screen.findByText("Gespreksverslag Kickoff");
+    await screen.findByText("Uw gespreksverslag is gereed.");
+    expect(screen.queryByText("Gespreksverslag Kickoff")).not.toBeInTheDocument();
     expect(screen.queryByText(/Formaat/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Aangemaakt/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Workflow annuleren" })).not.toBeInTheDocument();
@@ -77,7 +78,7 @@ describe("routes/FinalDownload/FinalDownloadScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Vernieuwen" }));
 
     await waitFor(() => expect(getFinalReportMock).toHaveBeenCalledTimes(2));
-    await screen.findByText("Gespreksverslag Kickoff");
+    await screen.findByText("Uw gespreksverslag is gereed.");
   });
 
   it("shows a translated load error that isn't a 404", async () => {
