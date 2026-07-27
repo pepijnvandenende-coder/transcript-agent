@@ -17,6 +17,24 @@ describe("routes/Upload/NewWorkflowPage", () => {
     navigateMock.mockClear();
   });
 
+  // Phase 16 item 1: exact requested copy.
+  it("shows the requested heading and instructional intro text", () => {
+    render(
+      <MemoryRouter>
+        <NewWorkflowPage currentUserId="u1" />
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Voor welke vergadering wil je een gespreksverslag genereren?" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Vul de naam of het onderwerp van de vergadering in. Vervolgens upload je het transcript en eventueel aanvullende notities.",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("disables the submit button until a title is entered", () => {
     render(
       <MemoryRouter>

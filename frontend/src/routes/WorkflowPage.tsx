@@ -1,6 +1,7 @@
 import { useParams } from "react-router-dom";
 import type { Workflow, WorkflowState } from "../api-client/client";
 import { JobStatusHint } from "../components/JobStatusHint";
+import { Layout } from "../components/Layout";
 import { StatusBadge } from "../components/StatusBadge";
 import { isTransientState, SLOW_HINT_AFTER_MS, useWorkflow } from "../state/useWorkflow";
 import { ConfirmLowConfidenceScreen } from "./ConfirmLowConfidence/ConfirmLowConfidenceScreen";
@@ -32,6 +33,13 @@ const SCREENS: Partial<Record<WorkflowState, ScreenComponent>> = {
 // same placeholder note Upload already used.
 const NOT_BUILT_STATES = new Set<WorkflowState>(["TRANSCRIPT_INSUFFICIENT"]);
 
+// Phase 16: screens whose content is consistently short/sparse (a title, a
+// status, one or two lines, one button) -- vertically centered via
+// Layout's `centered` prop instead of pinned to the top of an otherwise-empty
+// page. Screens with variable-length or form content (Upload, DraftReview,
+// ...) keep the normal top-down flow.
+const CENTERED_STATES = new Set<WorkflowState>(["COMPLETED", "FAILED"]);
+
 // "/workflows/:id" -- the single per-workflow route. Loads + polls via
 // state/useWorkflow.ts, then renders whichever screen owns the current
 // state (or a generic notice for a state with no screen yet).
@@ -45,10 +53,11 @@ export function WorkflowPage({ currentUserId }: { currentUserId: string }) {
   const Screen = SCREENS[workflow.currentState];
 
   return (
-    <main>
-      <h1>{workflow.title}</h1>
-      <StatusBadge state={workflow.currentState} />
-
+    <Layout
+      title={workflow.title}
+      status={<StatusBadge state={workflow.currentState} />}
+      centered={CENTERED_STATES.has(workflow.currentState)}
+    >
       {Screen && <Screen workflow={workflow} currentUserId={currentUserId} onUpdated={setWorkflow} />}
 
       {!Screen && NOT_BUILT_STATES.has(workflow.currentState) && (
@@ -65,6 +74,6 @@ export function WorkflowPage({ currentUserId }: { currentUserId: string }) {
           )}
         </>
       )}
-    </main>
+    </Layout>
   );
 }

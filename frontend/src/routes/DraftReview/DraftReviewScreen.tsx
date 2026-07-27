@@ -85,7 +85,7 @@ export function DraftReviewScreen({
   if (!draft) return <p>Concept wordt geladen...</p>;
 
   return (
-    <div className="page">
+    <>
       <div className="section">
         <h2>{draft.title}</h2>
         <p>Aanwezige deelnemers: {draft.attendees.length > 0 ? draft.attendees.join(", ") : "Niet vastgelegd"}</p>
@@ -138,6 +138,6 @@ export function DraftReviewScreen({
 
         {submitError && <p role="alert">{submitError}</p>}
       </div>
-    </div>
+    </>
   );
 }

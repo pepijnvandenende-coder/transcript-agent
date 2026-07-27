@@ -24,6 +24,12 @@
   box-sizing: border-box;
 }
 
+html,
+body,
+#root {
+  height: 100%;
+}
+
 body {
   margin: 0;
   background: var(--color-bg);
@@ -44,6 +50,24 @@ h3 {
   max-width: 46rem;
   margin: 0 auto;
   padding: var(--space-lg) var(--space-md);
+}
+
+/* Phase 16: vertically centers a screen's whole content -- used only for
+   screens whose content is consistently short (start/end/failure), so a
+   mostly-empty page doesn't read as pinned to the top of the viewport. */
+.page-centered {
+  min-height: calc(100vh - var(--space-lg) * 2);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* Phase 16: the shared title/status block every screen renders through
+   (components/Layout.tsx) -- centered instead of flush left, so the title
+   and workflow status read as the focal point of the page. */
+.page-header {
+  text-align: center;
+  margin-bottom: var(--space-lg);
 }
 
 .page-intro {

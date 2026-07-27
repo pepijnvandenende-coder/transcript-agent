@@ -1,12 +1,19 @@
 import { useEffect, useState } from "react";
 import { ApiError, finalReportDownloadUrl, getFinalReport, type FinalReport, type Workflow } from "../../api-client/client";
 import { translateError } from "../../api-client/translateError";
-import { BackOrCancel } from "../../components/BackOrCancel";
 
 // Rendered by WorkflowPage for COMPLETED. Tolerates a momentary 404: reaching
 // COMPLETED and writing the final_reports row are two separate steps inside
 // jobs/runners/finalRendererRunner.ts (a known, pre-existing ordering race
 // flagged back in the Phase 9 plan), not treated as a hard error here.
+//
+// Phase 16: no cancel control on this screen (either branch) -- COMPLETED is
+// a terminal FSM state (workflow/transitions.ts's CANCEL_TRANSITIONS only
+// covers non-terminal states), so "Workflow annuleren" here was already a
+// dead control that would fail with an FSM error if clicked. The operator
+// doesn't need file-format/timestamp details either -- just the title,
+// status (shown by the shared Layout, not duplicated here), and one primary
+// download action.
 export function FinalDownloadScreen({
   workflow,
   currentUserId,
@@ -41,32 +48,24 @@ export function FinalDownloadScreen({
 
   if (notReadyYet || !finalReport) {
     return (
-      <div className="page">
-        <div className="section">
-          <p>Eindrapport nog niet beschikbaar, probeer te vernieuwen.</p>
-          <div className="actions">
-            <button type="button" className="button-primary" onClick={load}>
-              Vernieuwen
-            </button>
-            <BackOrCancel mode="cancel" workflowId={workflow.id} currentUserId={currentUserId} onCancelled={onUpdated} />
-          </div>
+      <div className="section">
+        <p>Eindrapport nog niet beschikbaar, probeer te vernieuwen.</p>
+        <div className="actions">
+          <button type="button" className="button-primary" onClick={load}>
+            Vernieuwen
+          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="page">
-      <div className="section">
-        <h2>{finalReport.title}</h2>
-        <p>Formaat: {finalReport.format}</p>
-        <p>Aangemaakt: {finalReport.createdAt}</p>
-        <div className="actions">
-          <a href={finalReportDownloadUrl(workflow.id)} download className="button-primary">
-            Download eindrapport
-          </a>
-          <BackOrCancel mode="cancel" workflowId={workflow.id} currentUserId={currentUserId} onCancelled={onUpdated} />
-        </div>
+    <div className="section">
+      <h2>{finalReport.title}</h2>
+      <div className="actions">
+        <a href={finalReportDownloadUrl(workflow.id)} download className="button-primary">
+          Download gespreksverslag
+        </a>
       </div>
     </div>
   );

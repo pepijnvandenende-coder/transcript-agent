@@ -2,12 +2,15 @@ import { type FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createWorkflow } from "../../api-client/client";
 import { translateError } from "../../api-client/translateError";
+import { Layout } from "../../components/Layout";
 
 // "/" -- the very first step of the Upload journey: create a workflow, then
 // hand off to UploadScreen for everything else (transcript/notes, submit for
 // validation, status). Copy rewritten per Phase 11 feedback item 1: the
 // heading is the question itself, so it's immediately clear this creates a
-// gespreksverslag for a specific meeting, not an abstract "workflow".
+// gespreksverslag for a specific meeting, not an abstract "workflow". Copy
+// updated again in Phase 16 (exact wording per that request) and moved onto
+// the shared Layout component, centered like every other short screen.
 export function NewWorkflowPage({ currentUserId }: { currentUserId: string }) {
   const [title, setTitle] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -29,11 +32,10 @@ export function NewWorkflowPage({ currentUserId }: { currentUserId: string }) {
   }
 
   return (
-    <main className="page">
-      <h1>Van welke vergadering wil je een gespreksverslag maken?</h1>
+    <Layout title="Voor welke vergadering wil je een gespreksverslag genereren?" centered>
       <p className="page-intro">
-        Voer de naam van de vergadering of het gesprek in. Hiermee start je een nieuw gespreksverslag: je uploadt
-        straks het transcript en eventuele aantekeningen, en doorloopt de stappen tot een definitief verslag.
+        Vul de naam of het onderwerp van de vergadering in. Vervolgens upload je het transcript en eventueel
+        aanvullende notities.
       </p>
       <form onSubmit={handleSubmit} className="section">
         <div className="field">
@@ -47,6 +49,6 @@ export function NewWorkflowPage({ currentUserId }: { currentUserId: string }) {
         </div>
       </form>
       {error && <p role="alert">{error}</p>}
-    </main>
+    </Layout>
   );
 }

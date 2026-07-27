@@ -44,20 +44,18 @@ export function FailedScreen({
   }
 
   return (
-    <div className="page">
-      <div className="section">
-        <h2>Workflow mislukt</h2>
-        <p>Er is een fout opgetreden tijdens een automatische stap van deze workflow.</p>
-        {job?.error && <p className="helper-text">Oorzaak: {translateJobError(job.error)}</p>}
-        {loadError && <p role="alert">{loadError}</p>}
+    <div className="section">
+      <h2>Workflow mislukt</h2>
+      <p>Er is een fout opgetreden tijdens een automatische stap van deze workflow.</p>
+      {job?.error && <p className="helper-text">Oorzaak: {translateJobError(job.error)}</p>}
+      {loadError && <p role="alert">{loadError}</p>}
 
-        <div className="actions">
-          <button type="button" className="button-primary" onClick={handleRetry} disabled={retrying}>
-            Opnieuw proberen
-          </button>
-        </div>
-        {retryError && <p role="alert">{retryError}</p>}
+      <div className="actions">
+        <button type="button" className="button-primary" onClick={handleRetry} disabled={retrying}>
+          Opnieuw proberen
+        </button>
       </div>
+      {retryError && <p role="alert">{retryError}</p>}
     </div>
   );
 }

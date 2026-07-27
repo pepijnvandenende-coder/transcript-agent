@@ -1,5 +1,16 @@
+import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
 import * as finalRenderer from "../../src/ai/skills/finalRenderer";
+
+// Unzips a rendered .docx buffer and returns its word/document.xml content,
+// so tests can assert on the actual OOXML markup (headings, spacing,
+// tables) instead of just "it's a non-empty zip".
+async function documentXml(buffer: Buffer): Promise<string> {
+  const zip = await JSZip.loadAsync(buffer);
+  const file = zip.file("word/document.xml");
+  if (!file) throw new Error("word/document.xml missing from rendered .docx");
+  return file.async("string");
+}
 
 // Pure logic -- no database needed.
 describe("ai/skills/finalRenderer", () => {
@@ -114,6 +125,92 @@ describe("ai/skills/finalRenderer", () => {
         sections: [],
       });
       expect(buffer.length).toBeGreaterThan(0);
+    });
+
+    // Phase 16 item 4: explicit spacing so the Word output reads as a
+    // deliberately laid-out document, not a converted Markdown dump --
+    // blank-line-equivalent gaps between text blocks, and every heading
+    // visually separated from both what precedes and what follows it.
+    describe("spacing", () => {
+      it("gives the title (Heading 1) space after it", async () => {
+        const buffer = await finalRenderer.renderDocx({
+          title: "Gespreksverslag Test",
+          attendees: [],
+          date: "2026-01-01",
+          subject: "x",
+          sections: [],
+        });
+        const xml = await documentXml(buffer);
+        const titleParagraph = xml.split("Gespreksverslag Test")[0];
+        expect(titleParagraph).toContain('w:val="Heading1"');
+        expect(titleParagraph).toMatch(/<w:spacing[^/]*w:after="\d+"/);
+      });
+
+      it("gives every section heading (Heading 2) space both before and after it", async () => {
+        const buffer = await finalRenderer.renderDocx({
+          title: "x",
+          attendees: [],
+          date: "2026-01-01",
+          subject: "x",
+          sections: [
+            { heading: "Samenvatting", content: "Een alinea." },
+            { heading: "Notulen", content: "Nog een alinea." },
+          ],
+        });
+        const xml = await documentXml(buffer);
+        const headingBlocks = xml.split('w:val="Heading2"').slice(1);
+        expect(headingBlocks.length).toBe(2);
+        for (const block of headingBlocks) {
+          const spacingTagMatch = block.match(/<w:spacing[^>]*\/>/);
+          expect(spacingTagMatch).not.toBeNull();
+          const spacingTag = spacingTagMatch![0];
+          expect(spacingTag).toMatch(/w:before="\d+"/);
+          expect(spacingTag).toMatch(/w:after="\d+"/);
+        }
+      });
+
+      it("gives plain paragraphs space after them, so consecutive paragraphs don't run together", async () => {
+        const buffer = await finalRenderer.renderDocx({
+          title: "x",
+          attendees: [],
+          date: "2026-01-01",
+          subject: "x",
+          sections: [{ heading: "Notulen", content: "Eerste alinea.\nTweede alinea." }],
+        });
+        const xml = await documentXml(buffer);
+        const firstParagraph = xml.split("Eerste alinea.")[0];
+        expect(firstParagraph).toMatch(/<w:spacing[^/]*w:after="\d+"/);
+      });
+
+      it("gives bullet items their own spacing, distinct from plain paragraphs", async () => {
+        const buffer = await finalRenderer.renderDocx({
+          title: "x",
+          attendees: [],
+          date: "2026-01-01",
+          subject: "x",
+          sections: [{ heading: "Samenvatting", content: "- Eerste punt\n- Tweede punt" }],
+        });
+        const xml = await documentXml(buffer);
+        const bulletParagraph = xml.split("Eerste punt")[0];
+        expect(bulletParagraph).toContain("w:numPr");
+        expect(bulletParagraph).toMatch(/<w:spacing[^/]*w:after="\d+"/);
+      });
+
+      it("still renders a real table (unaffected by the spacing changes)", async () => {
+        const buffer = await finalRenderer.renderDocx({
+          title: "x",
+          attendees: [],
+          date: "2026-01-01",
+          subject: "x",
+          sections: [
+            { heading: "Acties en vervolgstappen", content: "| Actie | Status |\n|-------|--------|\n| X | Open |" },
+          ],
+        });
+        const xml = await documentXml(buffer);
+        expect(xml).toContain("<w:tbl>");
+        expect(xml).toContain("Actie");
+        expect(xml).toContain("Open");
+      });
     });
   });
 

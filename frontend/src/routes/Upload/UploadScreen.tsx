@@ -100,7 +100,7 @@ export function UploadScreen({
   }
 
   return (
-    <div className="page">
+    <>
       {workflow.currentState === "CREATED" && (
         <form onSubmit={handleUploadAndSubmit} className="section">
           <FileOrPasteField
@@ -146,6 +146,6 @@ export function UploadScreen({
       )}
 
       {submitError && <p role="alert">{submitError}</p>}
-    </div>
+    </>
   );
 }

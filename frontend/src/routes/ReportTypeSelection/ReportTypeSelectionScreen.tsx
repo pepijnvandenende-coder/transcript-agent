@@ -81,9 +81,8 @@ export function ReportTypeSelectionScreen({
   if (loadError) return <p role="alert">{loadError}</p>;
 
   return (
-    <div className="page">
-      <div className="section">
-        {suggestion ? (
+    <div className="section">
+      {suggestion ? (
           <>
             <h2>Voorgesteld verslagtype: {displayNameFor(suggestion.suggestedType, policies)}</h2>
             <p>{suggestion.rationale}</p>
@@ -121,9 +120,8 @@ export function ReportTypeSelectionScreen({
               <BackOrCancel mode="cancel" workflowId={workflow.id} currentUserId={currentUserId} onCancelled={onUpdated} />
             </div>
           </>
-        )}
-        {submitError && <p role="alert">{submitError}</p>}
-      </div>
+      )}
+      {submitError && <p role="alert">{submitError}</p>}
     </div>
   );
 }

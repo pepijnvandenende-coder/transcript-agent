@@ -114,7 +114,7 @@ export function ConfirmLowConfidenceScreen({
     editSubmitting || (transcriptContent.trim().length === 0 && notesContent.trim().length === 0);
 
   return (
-    <div className="page">
+    <>
       <div className="section">
         <h2>Bevestiging nodig</h2>
         <p>{explanationFor(aiOutput)}</p>
@@ -180,6 +180,6 @@ export function ConfirmLowConfidenceScreen({
       </div>
 
       {submitError && <p role="alert">{submitError}</p>}
-    </div>
+    </>
   );
 }

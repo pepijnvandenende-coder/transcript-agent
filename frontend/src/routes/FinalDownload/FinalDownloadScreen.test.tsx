@@ -47,14 +47,19 @@ describe("routes/FinalDownload/FinalDownloadScreen", () => {
     vi.restoreAllMocks();
   });
 
-  it("shows the final report metadata and a download link", async () => {
+  // Phase 16 item 3: no technical file-format/timestamp details, and no
+  // second (dead -- COMPLETED is a terminal FSM state) cancel control --
+  // just the title and one primary download action.
+  it("shows the report title and a single primary download action, with no technical details", async () => {
     vi.spyOn(client, "getFinalReport").mockResolvedValue(finalReport());
 
     renderScreen();
 
     await screen.findByText("Gespreksverslag Kickoff");
-    expect(screen.getByText("Formaat: docx")).toBeInTheDocument();
-    const link = screen.getByRole("link", { name: "Download eindrapport" });
+    expect(screen.queryByText(/Formaat/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Aangemaakt/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Workflow annuleren" })).not.toBeInTheDocument();
+    const link = screen.getByRole("link", { name: "Download gespreksverslag" });
     expect(link).toHaveAttribute("href", "/workflows/w1/final-report/download");
   });
 
@@ -83,12 +88,12 @@ describe("routes/FinalDownload/FinalDownloadScreen", () => {
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Er is een fout opgetreden."));
   });
 
-  it("offers a cancel control even while the report isn't ready yet", async () => {
+  it("does not offer a cancel control while the report isn't ready yet -- COMPLETED is terminal", async () => {
     vi.spyOn(client, "getFinalReport").mockRejectedValue(new ApiError(404, "Final report not available yet"));
 
     renderScreen();
 
     await screen.findByText("Eindrapport nog niet beschikbaar, probeer te vernieuwen.");
-    expect(screen.getByRole("button", { name: "Workflow annuleren" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Workflow annuleren" })).not.toBeInTheDocument();
   });
 });

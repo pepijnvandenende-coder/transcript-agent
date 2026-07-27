@@ -133,4 +133,29 @@ describe("routes/WorkflowPage", () => {
     expect(screen.getByText("JobStatusHintStub")).toBeInTheDocument();
     expect(screen.getByText(/Draait de worker/)).toBeInTheDocument();
   });
+
+  // Phase 16 item 2: the workflow title and status render through the
+  // shared Layout (centered header), not flush top-left as their own
+  // elements.
+  it("renders the workflow title as a centered h1 alongside the status badge", () => {
+    mockUseWorkflow({ workflow: workflow({ title: "Werkoverleg Kickoff", currentState: "CREATED" }) });
+    renderAt("w1");
+    expect(screen.getByRole("heading", { level: 1, name: "Werkoverleg Kickoff" })).toBeInTheDocument();
+    expect(screen.getByText("Aangemaakt")).toBeInTheDocument();
+  });
+
+  it.each(["COMPLETED", "FAILED"] as const)("vertically centers the sparse %s screen", (state) => {
+    mockUseWorkflow({ workflow: workflow({ currentState: state }) });
+    const { container } = renderAt("w1");
+    expect(container.querySelector("main")).toHaveClass("page-centered");
+  });
+
+  it.each(["CREATED", "DRAFT_PENDING_REVIEW", "AWAITING_REPORT_TYPE_SELECTION"] as const)(
+    "does not vertically center the normal-flow %s screen",
+    (state) => {
+      mockUseWorkflow({ workflow: workflow({ currentState: state }) });
+      const { container } = renderAt("w1");
+      expect(container.querySelector("main")).not.toHaveClass("page-centered");
+    },
+  );
 });

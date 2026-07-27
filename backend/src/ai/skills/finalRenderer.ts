@@ -50,12 +50,24 @@ export function isApplicableSection(section: DraftSection): boolean {
   return trimmed.length > 0 && !NOT_APPLICABLE_PATTERN.test(trimmed);
 }
 
+// Phase 16 item 4: explicit spacing (in twips -- twentieths of a point, the
+// unit docx/OOXML paragraph spacing uses) on every paragraph/heading rather
+// than relying on the library's built-in style defaults, so the output
+// reads as a deliberately laid-out document -- blank-line-equivalent gaps
+// between text blocks, and a heading always visually separated from both
+// the text above it (space before) and below it (space after) regardless
+// of what kind of block precedes it (paragraph, bullet list, or table).
+const PARAGRAPH_SPACING = { after: 200 };
+const BULLET_SPACING = { after: 80 };
+const HEADING1_SPACING = { after: 240 };
+const HEADING2_SPACING = { before: 360, after: 160 };
+
 function blockToDocxElements(block: ContentBlock): Array<Paragraph | Table> {
   if (block.type === "paragraph") {
-    return [new Paragraph({ text: block.text })];
+    return [new Paragraph({ text: block.text, spacing: PARAGRAPH_SPACING })];
   }
   if (block.type === "bullets") {
-    return block.items.map((item) => new Paragraph({ text: item, bullet: { level: 0 } }));
+    return block.items.map((item) => new Paragraph({ text: item, bullet: { level: 0 }, spacing: BULLET_SPACING }));
   }
   const headerRow = new TableRow({
     children: block.headers.map(
@@ -83,15 +95,18 @@ export function renderDocx(params: {
   const { title, attendees, date, subject, sections } = params;
 
   const children: Array<Paragraph | Table> = [
-    new Paragraph({ text: title, heading: HeadingLevel.HEADING_1 }),
-    new Paragraph({ text: `Aanwezige deelnemers: ${attendees.length > 0 ? attendees.join(", ") : "Niet vastgelegd"}` }),
-    new Paragraph({ text: `Datum: ${date}` }),
-    new Paragraph({ text: `Onderwerp: ${subject}` }),
+    new Paragraph({ text: title, heading: HeadingLevel.HEADING_1, spacing: HEADING1_SPACING }),
+    new Paragraph({
+      text: `Aanwezige deelnemers: ${attendees.length > 0 ? attendees.join(", ") : "Niet vastgelegd"}`,
+      spacing: PARAGRAPH_SPACING,
+    }),
+    new Paragraph({ text: `Datum: ${date}`, spacing: PARAGRAPH_SPACING }),
+    new Paragraph({ text: `Onderwerp: ${subject}`, spacing: PARAGRAPH_SPACING }),
   ];
 
   for (const section of sections) {
     if (!isApplicableSection(section)) continue;
-    children.push(new Paragraph({ text: section.heading, heading: HeadingLevel.HEADING_2 }));
+    children.push(new Paragraph({ text: section.heading, heading: HeadingLevel.HEADING_2, spacing: HEADING2_SPACING }));
     for (const block of parseContentBlocks(section.content)) {
       children.push(...blockToDocxElements(block));
     }

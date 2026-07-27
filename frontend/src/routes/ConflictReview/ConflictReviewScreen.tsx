@@ -70,9 +70,8 @@ export function ConflictReviewScreen({
   const resolved = conflicts.filter((c) => c.status === "RESOLVED");
 
   return (
-    <div className="page">
-      <div className="section">
-        <h2>Openstaande conflicten</h2>
+    <div className="section">
+      <h2>Openstaande conflicten</h2>
         {open.length === 0 && <p>Geen openstaande conflicten.</p>}
         {open.map((conflict) => (
           <div key={conflict.id} className="section">
@@ -132,7 +131,6 @@ export function ConflictReviewScreen({
             Upload opnieuw starten
           </button>
         </div>
-      </div>
     </div>
   );
 }
