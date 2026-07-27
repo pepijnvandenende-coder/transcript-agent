@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DraftQualityPrecheckEnvelopeSchema } from "../../src/ai/skillEnvelope";
+import { DATE_NOT_RECORDED } from "../../src/ai/skills/draftGenerator";
 import * as draftQualityPrecheck from "../../src/ai/skills/draftQualityPrecheck";
 
 // Phase 14: replaces the Phase 7 deterministic-stub tests with the real-LLM
@@ -9,6 +10,13 @@ import * as draftQualityPrecheck from "../../src/ai/skills/draftQualityPrecheck"
 // sections/bodyContentRule) is now computed up front by
 // approval/reportStructureValidator.ts and passed in as `structuralItems`,
 // so it's supplied directly here rather than recomputed.
+//
+// Phase 15 item 2: the old freeform two-item checklist (one bundled
+// "attendees/date/subject" item, one factual-grounding item) is replaced by
+// a fixed five-item Dutch checklist -- Deelnemers/Datum/Onderwerp each get
+// their own entry, the remaining structural items roll up into one
+// "Structuur voldoet" item, and factual grounding stays its own item. See
+// docs/phase-15/README.md item 2.
 const createMock = vi.fn();
 vi.mock("../../src/ai/anthropicClient", () => ({
   getAnthropicClient: () => ({ messages: { create: createMock } }),
@@ -35,7 +43,15 @@ const BASE_PARAMS = {
   sourceText: "Jan Jansen: We bespraken de kernpunten op 2026-01-01.",
 };
 
-function mockLlmResponse(output: { checklist: Array<{ item: string; passed: boolean }>; blocking_issues: string[]; recommendation: string }) {
+const ALL_CORRECT = { attendees_correct: true, date_correct: true, subject_correct: true, factually_grounded: true, issues: [] };
+
+function mockLlmResponse(output: {
+  attendees_correct: boolean;
+  date_correct: boolean;
+  subject_correct: boolean;
+  factually_grounded: boolean;
+  issues: string[];
+}) {
   createMock.mockResolvedValue({ content: [{ type: "text", text: JSON.stringify(output) }] });
 }
 
@@ -44,74 +60,98 @@ describe("ai/skills/draftQualityPrecheck (real LLM, mocked client)", () => {
     createMock.mockReset();
   });
 
-  it("skips the LLM call and reports structural failures when the structural precheck fails", async () => {
+  it("skips the LLM call and reports every field as absent/incomplete when there are no sections at all", async () => {
+    const envelope = await draftQualityPrecheck.run({ ...BASE_PARAMS, sections: [], structuralItems: PASSING_STRUCTURAL_ITEMS });
+
+    expect(createMock).not.toHaveBeenCalled();
+    expect(envelope.result.checklist).toEqual([
+      { item: "Deelnemers correct overgenomen", passed: true },
+      { item: "Datum correct overgenomen", passed: true },
+      { item: "Onderwerp correct overgenomen", passed: true },
+      { item: "Structuur voldoet", passed: true },
+      { item: "Inhoud bevat niet-onderbouwde informatie", passed: false },
+    ]);
+    expect(envelope.result.blocking_issues).toContain("Conceptverslag bevat geen inhoud om te beoordelen.");
+  });
+
+  it("still runs the LLM call and shows the full checklist when the structural precheck fails on one item", async () => {
+    mockLlmResponse(ALL_CORRECT);
     const structuralItems = [...PASSING_STRUCTURAL_ITEMS.slice(0, -1), { item: "Thematische notulen", passed: false }];
 
     const envelope = await draftQualityPrecheck.run({ ...BASE_PARAMS, structuralItems });
 
-    expect(createMock).not.toHaveBeenCalled();
-    expect(envelope.result.checklist).toEqual(structuralItems);
-    expect(envelope.result.blocking_issues).toEqual(["Ontbrekend of leeg verplicht onderdeel: Thematische notulen"]);
-    expect(envelope.result.overall_score).toBeLessThan(1);
+    expect(createMock).toHaveBeenCalledTimes(1);
+    expect(envelope.result.checklist).toEqual([
+      { item: "Deelnemers correct overgenomen", passed: true },
+      { item: "Datum correct overgenomen", passed: true },
+      { item: "Onderwerp correct overgenomen", passed: true },
+      { item: "Structuur onvolledig", passed: false },
+      { item: "Inhoud sluit aan op het transcript", passed: true },
+    ]);
+    expect(envelope.result.blocking_issues).toEqual(["Structuur van het conceptverslag is onvolledig."]);
   });
 
-  it("calls the LLM and merges structural + content-judged checklist items once structure passes", async () => {
-    mockLlmResponse({
-      checklist: [
-        { item: "Deelnemers/datum/onderwerp correct overgenomen", passed: true },
-        { item: "Tekst feitelijk onderbouwd door brontekst", passed: true },
-      ],
-      blocking_issues: [],
-      recommendation: "Ziet er goed uit.",
-    });
+  it("calls the LLM and returns a full five-item checklist, all passing, when everything is correct", async () => {
+    mockLlmResponse(ALL_CORRECT);
 
     const envelope = await draftQualityPrecheck.run({ ...BASE_PARAMS, structuralItems: PASSING_STRUCTURAL_ITEMS });
 
     expect(createMock).toHaveBeenCalledTimes(1);
     expect(envelope.result.checklist).toEqual([
-      ...PASSING_STRUCTURAL_ITEMS,
-      { item: "Deelnemers/datum/onderwerp correct overgenomen", passed: true },
-      { item: "Tekst feitelijk onderbouwd door brontekst", passed: true },
+      { item: "Deelnemers correct overgenomen", passed: true },
+      { item: "Datum correct overgenomen", passed: true },
+      { item: "Onderwerp correct overgenomen", passed: true },
+      { item: "Structuur voldoet", passed: true },
+      { item: "Inhoud sluit aan op het transcript", passed: true },
     ]);
     expect(envelope.result.overall_score).toBe(1);
     expect(envelope.result.blocking_issues).toEqual([]);
-    expect(envelope.result.recommendation).toBe("Ziet er goed uit.");
+    expect(envelope.result.recommendation).toMatch(/geslaagd/i);
   });
 
-  it("surfaces a signaled deviation -- e.g. attendees not actually in the source text -- as a failed checklist item", async () => {
-    mockLlmResponse({
-      checklist: [
-        { item: "Deelnemers/datum/onderwerp correct overgenomen", passed: false },
-        { item: "Tekst feitelijk onderbouwd door brontekst", passed: true },
-      ],
-      blocking_issues: ["Deelnemer 'Piet Peters' komt niet voor in de brontekst."],
-      recommendation: "Controleer de deelnemerslijst.",
-    });
+  // The exact bug reported in Phase 15: a bundled item used to fail (and
+  // show as "missing") the moment ANY one of attendees/date/subject was
+  // doubted, hiding that the other two were genuinely correct.
+  it("shows attendees as correct even when date is flagged incorrect -- no longer bundled together", async () => {
+    mockLlmResponse({ ...ALL_CORRECT, date_correct: false, issues: ["De genoemde datum komt niet voor in de brontekst."] });
 
     const envelope = await draftQualityPrecheck.run({ ...BASE_PARAMS, structuralItems: PASSING_STRUCTURAL_ITEMS });
 
-    expect(envelope.result.blocking_issues).toEqual(["Deelnemer 'Piet Peters' komt niet voor in de brontekst."]);
-    expect(envelope.result.overall_score).toBeLessThan(1);
+    expect(envelope.result.checklist).toContainEqual({ item: "Deelnemers correct overgenomen", passed: true });
+    expect(envelope.result.checklist).toContainEqual({ item: "Onderwerp correct overgenomen", passed: true });
+    expect(envelope.result.checklist).toContainEqual({ item: "Datum wijkt af van het transcript", passed: false });
+    expect(envelope.result.blocking_issues).toEqual(["De genoemde datum komt niet voor in de brontekst."]);
   });
 
-  it("surfaces a signaled factual deviation -- content not grounded in the source -- as a failed checklist item", async () => {
-    mockLlmResponse({
-      checklist: [
-        { item: "Deelnemers/datum/onderwerp correct overgenomen", passed: true },
-        { item: "Tekst feitelijk onderbouwd door brontekst", passed: false },
-      ],
-      blocking_issues: ["Het verslag noemt een besluit dat niet in de brontekst voorkomt."],
-      recommendation: "Controleer de feitelijke onderbouwing.",
-    });
+  it("shows 'Datum ontbreekt' (not a content judgment) when the date is the DraftGenerator 'not recorded' placeholder", async () => {
+    mockLlmResponse(ALL_CORRECT);
+
+    const envelope = await draftQualityPrecheck.run({ ...BASE_PARAMS, date: DATE_NOT_RECORDED, structuralItems: PASSING_STRUCTURAL_ITEMS });
+
+    expect(envelope.result.checklist).toContainEqual({ item: "Datum ontbreekt", passed: false });
+    expect(envelope.result.blocking_issues).toContain("Datum ontbreekt.");
+  });
+
+  it("shows 'Deelnemers ontbreken' when attendees is structurally empty", async () => {
+    mockLlmResponse(ALL_CORRECT);
+    const structuralItems = [{ item: "Aanwezige deelnemers", passed: false }, ...PASSING_STRUCTURAL_ITEMS.slice(1)];
+
+    const envelope = await draftQualityPrecheck.run({ ...BASE_PARAMS, attendees: [], structuralItems });
+
+    expect(envelope.result.checklist).toContainEqual({ item: "Deelnemers ontbreken", passed: false });
+  });
+
+  it("surfaces a signaled factual deviation as a failed 'Inhoud' checklist item", async () => {
+    mockLlmResponse({ ...ALL_CORRECT, factually_grounded: false, issues: ["Het verslag noemt een besluit dat niet in de brontekst voorkomt."] });
 
     const envelope = await draftQualityPrecheck.run({ ...BASE_PARAMS, structuralItems: PASSING_STRUCTURAL_ITEMS });
 
-    expect(envelope.result.checklist.find((entry) => entry.item === "Tekst feitelijk onderbouwd door brontekst")?.passed).toBe(false);
+    expect(envelope.result.checklist).toContainEqual({ item: "Inhoud bevat niet-onderbouwde informatie", passed: false });
     expect(envelope.result.blocking_issues).toEqual(["Het verslag noemt een besluit dat niet in de brontekst voorkomt."]);
   });
 
   it("includes the draft content and source text in the user message sent to the LLM", async () => {
-    mockLlmResponse({ checklist: [], blocking_issues: [], recommendation: "x" });
+    mockLlmResponse(ALL_CORRECT);
 
     await draftQualityPrecheck.run({ ...BASE_PARAMS, structuralItems: PASSING_STRUCTURAL_ITEMS });
 
@@ -127,14 +167,7 @@ describe("ai/skills/draftQualityPrecheck (real LLM, mocked client)", () => {
   // topic-headed sections (no literal "Notulen" heading) must not produce
   // a "Notulen ontbreekt" (or any structural) blocking issue.
   it("regression: a qa draft with topic-headed Q&A sections produces no blocking issues", async () => {
-    mockLlmResponse({
-      checklist: [
-        { item: "Deelnemers/datum/onderwerp correct overgenomen", passed: true },
-        { item: "Tekst feitelijk onderbouwd door brontekst", passed: true },
-      ],
-      blocking_issues: [],
-      recommendation: "Ziet er goed uit.",
-    });
+    mockLlmResponse(ALL_CORRECT);
 
     const qaStructuralItems = [
       { item: "Titel", passed: true },
@@ -162,14 +195,7 @@ describe("ai/skills/draftQualityPrecheck (real LLM, mocked client)", () => {
   });
 
   it("returns an envelope that validates against the shared schema", async () => {
-    mockLlmResponse({
-      checklist: [
-        { item: "Deelnemers/datum/onderwerp correct overgenomen", passed: true },
-        { item: "Tekst feitelijk onderbouwd door brontekst", passed: true },
-      ],
-      blocking_issues: [],
-      recommendation: "Ziet er goed uit.",
-    });
+    mockLlmResponse(ALL_CORRECT);
 
     const envelope = await draftQualityPrecheck.run({ ...BASE_PARAMS, structuralItems: PASSING_STRUCTURAL_ITEMS });
 

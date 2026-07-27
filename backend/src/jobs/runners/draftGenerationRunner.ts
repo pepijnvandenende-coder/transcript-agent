@@ -44,7 +44,6 @@ export async function runGenerateDraftJob(job: JobRunnerInput): Promise<JobRunne
     policyKey: policy.key,
     promptRef: policy.promptRef,
     subject: workflow.title,
-    date: workflow.createdAt.toISOString().slice(0, 10),
   });
 
   const { aiOutputId } = await handleSkillOutput({

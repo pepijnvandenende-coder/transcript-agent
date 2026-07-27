@@ -1,5 +1,6 @@
 import type { DraftGeneratorEnvelope } from "../skillEnvelope";
 import { getAnthropicClient } from "../anthropicClient";
+import { normalizeSectionContent } from "../normalizeSectionContent";
 import { loadReportTypePrompt } from "../prompts/reportTypeLoader";
 
 // Phase 11: replaces the Phase 6 deterministic stub with a real Anthropic
@@ -17,15 +18,34 @@ export const PROMPT_VERSION = "llm-1";
 const MODEL = "claude-opus-4-8";
 const MAX_TOKENS = 8000;
 
-// Only title/attendees/sections are asked of the model -- report_type,
-// date, and subject are known facts from the workflow/policy, not something
-// an LLM should be reconstructing (matches the "no invented facts" framing
-// the prompt files themselves already state).
+// Phase 15 item 1: shown wherever a date/attendees value couldn't be
+// determined -- see finalRenderer.ts's existing "Niet vastgelegd" fallback
+// for attendees, same convention. Kept as a non-empty string (rather than
+// null/empty) so the Phase 14 "Datum niet leeg" structural check
+// (reportStructureValidator.ts) keeps working unchanged: a deliberate "not
+// recorded" still counts as a present value there. draftQualityPrecheck.ts
+// treats this exact string as "absent" for its own, separate correctness
+// judgment.
+export const DATE_NOT_RECORDED = "Niet vastgelegd";
+
+// title/attendees/sections/conversation_date are asked of the model;
+// report_type and subject are known facts from the workflow/policy, not
+// something an LLM should be reconstructing (matches the "no invented
+// facts" framing the prompt files themselves already state). Phase 15: the
+// date is no longer supplied by the runner (that was workflow.createdAt --
+// the upload/generation moment, not the conversation date, see
+// docs/phase-15/README.md item 1) -- the model extracts it from the source
+// text itself, only when explicitly present there.
 const OUTPUT_SCHEMA = {
   type: "object",
   properties: {
     title: { type: "string" },
     attendees: { type: "array", items: { type: "string" } },
+    conversation_date: {
+      type: ["string", "null"],
+      description:
+        "De datum van het gesprek zelf, exact zoals vermeld in de brontekst (bijvoorbeeld '12 maart 2026' of '2026-03-12'). Alleen invullen als de brontekst een datum van het gesprek expliciet vermeldt; anders null. Verzin geen datum.",
+    },
     sections: {
       type: "array",
       items: {
@@ -39,13 +59,14 @@ const OUTPUT_SCHEMA = {
       },
     },
   },
-  required: ["title", "attendees", "sections"],
+  required: ["title", "attendees", "conversation_date", "sections"],
   additionalProperties: false,
 } as const;
 
 interface DraftGeneratorLlmOutput {
   title: string;
   attendees: string[];
+  conversation_date: string | null;
   sections: Array<{ heading: string; content: string }>;
 }
 
@@ -54,9 +75,8 @@ export async function run(params: {
   policyKey: string;
   promptRef: string;
   subject: string;
-  date: string;
 }): Promise<DraftGeneratorEnvelope> {
-  const { mergedContent, policyKey, promptRef, subject, date } = params;
+  const { mergedContent, policyKey, promptRef, subject } = params;
   const systemPrompt = loadReportTypePrompt(promptRef);
 
   const client = getAnthropicClient();
@@ -68,7 +88,7 @@ export async function run(params: {
     messages: [
       {
         role: "user",
-        content: `Onderwerp: ${subject}\nDatum: ${date}\n\nBron (transcript en, indien aanwezig, eigen notities, al samengevoegd):\n\n${mergedContent}`,
+        content: `Onderwerp: ${subject}\n\nBron (transcript en, indien aanwezig, eigen notities, al samengevoegd):\n\n${mergedContent}`,
       },
     ],
   });
@@ -77,7 +97,9 @@ export async function run(params: {
   const parsed: DraftGeneratorLlmOutput =
     textBlock && textBlock.type === "text"
       ? JSON.parse(textBlock.text)
-      : { title: subject, attendees: [], sections: [] };
+      : { title: subject, attendees: [], conversation_date: null, sections: [] };
+
+  const date = parsed.conversation_date && parsed.conversation_date.trim().length > 0 ? parsed.conversation_date.trim() : DATE_NOT_RECORDED;
 
   return {
     skill: SKILL_NAME,
@@ -95,7 +117,7 @@ export async function run(params: {
       attendees: parsed.attendees,
       date,
       subject,
-      sections: parsed.sections,
+      sections: parsed.sections.map((section) => ({ ...section, content: normalizeSectionContent(section.content) })),
       coverage: mergedContent.trim().length > 0 ? 1 : 0,
     },
   };

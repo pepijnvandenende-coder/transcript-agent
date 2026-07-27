@@ -23,7 +23,7 @@ vi.mock("../../src/ai/anthropicClient", () => ({
       create: vi.fn().mockImplementation((params: { output_config?: { format?: { schema?: { properties?: Record<string, unknown> } } } }) => {
         const properties = params.output_config?.format?.schema?.properties ?? {};
         const isReportTypeClassification = "suggested_type" in properties;
-        const isDraftQualityPrecheck = "checklist" in properties;
+        const isDraftQualityPrecheck = "factually_grounded" in properties;
         if (isReportTypeClassification) {
           return Promise.resolve({
             content: [
@@ -40,12 +40,11 @@ vi.mock("../../src/ai/anthropicClient", () => ({
               {
                 type: "text",
                 text: JSON.stringify({
-                  checklist: [
-                    { item: "Deelnemers/datum/onderwerp correct overgenomen", passed: true },
-                    { item: "Tekst feitelijk onderbouwd door brontekst", passed: true },
-                  ],
-                  blocking_issues: [],
-                  recommendation: "Ziet er inhoudelijk correct uit.",
+                  attendees_correct: true,
+                  date_correct: true,
+                  subject_correct: true,
+                  factually_grounded: true,
+                  issues: [],
                 }),
               },
             ],
@@ -58,6 +57,7 @@ vi.mock("../../src/ai/anthropicClient", () => ({
               text: JSON.stringify({
                 title: "Gespreksverslag Test",
                 attendees: ["Jan Jansen (projectleider)"],
+                conversation_date: "2026-01-15",
                 sections: [
                   { heading: "Samenvatting", content: "Kernpunten van het gesprek." },
                   { heading: "Notulen", content: "Gedetailleerde weergave van het gesprek." },
@@ -466,9 +466,13 @@ describe("jobs: queue + processNextJob (no daemon required)", () => {
     const finalReport = await prisma.finalReport.findUniqueOrThrow({ where: { workflowId } });
     expect(finalReport.draftId).toBe(draft.id);
     expect(finalReport.aiOutputId).toBe(completed.resultAiOutputId);
+    expect(finalReport.format).toBe("docx");
 
-    const content = await localFilesystemStorage.get(finalReport.storageRef);
-    expect(content).toContain("Voeg meer detail toe over de genomen besluiten.");
+    // .docx is a binary ZIP archive -- confirm a genuine docx file was
+    // written (local file header magic number) rather than inspecting
+    // compressed XML content for the revision text.
+    const content = await localFilesystemStorage.getBinary(finalReport.storageRef);
+    expect(Array.from(content.subarray(0, 4))).toEqual([0x50, 0x4b, 0x03, 0x04]);
   });
 
   it("retry lineage flows from a manually-enqueued retry job through to the resulting ai_outputs row", async () => {

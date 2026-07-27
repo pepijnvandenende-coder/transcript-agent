@@ -303,21 +303,21 @@ describe("Phase 9 final-report API", () => {
     // handleSkillOutput() never writes skill-specific rows itself -- this
     // test calls it directly (bypassing the job queue/finalRendererRunner.ts),
     // so the rendered content + final_reports row are created here instead.
-    const content = finalRenderer.renderContent({
+    const docxBuffer = await finalRenderer.renderDocx({
       title: draft.title,
       attendees: draft.attendees as unknown as string[],
       date: draft.date,
       subject: draft.subject,
       sections: draft.sections as unknown as Array<{ heading: string; content: string }>,
     });
-    const storageRef = `${workflow.id}/final-reports/report.md`;
-    await localFilesystemStorage.put(storageRef, content);
+    const storageRef = `${workflow.id}/final-reports/report.docx`;
+    await localFilesystemStorage.putBinary(storageRef, docxBuffer);
     await createFinalReport({
       workflowId: workflow.id,
       draftId: draft.id,
       aiOutputId: finalAiOutputId,
       title: draft.title,
-      format: "markdown",
+      format: "docx",
       storageRef,
     });
     return workflow.id;
@@ -330,22 +330,27 @@ describe("Phase 9 final-report API", () => {
     expect(response.status).toBe(200);
     const body = (await response.json()) as { title: string; format: string };
     expect(body.title).toBe("Gespreksverslag Test");
-    expect(body.format).toBe("markdown");
+    expect(body.format).toBe("docx");
 
     const workflow = await prisma.workflow.findUniqueOrThrow({ where: { id: workflowId } });
     expect(workflow.currentState).toBe(WorkflowState.COMPLETED);
   });
 
-  it("GET /workflows/:id/final-report/download returns the rendered content", async () => {
+  it("GET /workflows/:id/final-report/download returns a valid .docx file", async () => {
     const workflowId = await workflowAtCompleted("Final Report Route Download");
 
     const response = await fetch(`${baseUrl}/workflows/${workflowId}/final-report/download`);
     expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toMatch(/text\/markdown/);
+    expect(response.headers.get("content-type")).toBe(
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    );
     expect(response.headers.get("content-disposition")).toContain("attachment");
-    const text = await response.text();
-    expect(text).toContain("Titel: Gespreksverslag Test");
-    expect(text).toContain("## Notulen");
+    expect(response.headers.get("content-disposition")).toContain(".docx");
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    // .docx is a ZIP archive -- the local file header magic number confirms
+    // a genuine binary docx round-tripped through the download route, not
+    // Markdown text mistakenly served with a docx content-type.
+    expect(Array.from(bytes.slice(0, 4))).toEqual([0x50, 0x4b, 0x03, 0x04]);
   });
 
   it("GET /workflows/:id/final-report 404s when the workflow has no final report yet", async () => {

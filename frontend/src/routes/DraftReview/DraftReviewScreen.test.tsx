@@ -66,18 +66,24 @@ describe("routes/DraftReview/DraftReviewScreen", () => {
     expect(screen.getByText("Detail B")).toBeInTheDocument();
   });
 
-  it("renders an understandable Dutch precheck message listing missing sections, with no raw score or English text", async () => {
+  // Phase 15 item 2: a passing item must never read as missing just because
+  // it was bundled with something that failed -- every checklist item is
+  // rendered on its own, with its own ✓/⚠ marker.
+  it("renders every checklist item with its own pass/fail marker, with no raw score or English text", async () => {
     vi.spyOn(client, "getDrafts").mockResolvedValue([
       draft({
         precheck: {
           id: "p1",
-          overallScore: 0.5,
+          overallScore: 0.8,
           checklist: [
-            { item: "Notulen", passed: false },
-            { item: "Samenvatting", passed: true },
+            { item: "Deelnemers correct overgenomen", passed: true },
+            { item: "Datum ontbreekt", passed: false },
+            { item: "Onderwerp correct overgenomen", passed: true },
+            { item: "Structuur voldoet", passed: true },
+            { item: "Inhoud sluit aan op het transcript", passed: true },
           ],
-          blockingIssues: ["Missing or empty required section: Notulen"],
-          recommendation: "Draft is missing required content.",
+          blockingIssues: ["Datum ontbreekt."],
+          recommendation: "1 aandachtspunt(en) gevonden -- controleer de checklist voor details.",
           createdAt: "2026-01-01",
         },
       }),
@@ -85,21 +91,31 @@ describe("routes/DraftReview/DraftReviewScreen", () => {
 
     renderScreen();
 
-    await screen.findByText("Controle uitgevoerd: de volgende onderdelen ontbreken nog: Notulen.");
+    await screen.findByText("Kwaliteitscontrole");
+    expect(screen.getByText("✓ Deelnemers correct overgenomen")).toBeInTheDocument();
+    expect(screen.getByText("✓ Onderwerp correct overgenomen")).toBeInTheDocument();
+    expect(screen.getByText("✓ Structuur voldoet")).toBeInTheDocument();
+    expect(screen.getByText("✓ Inhoud sluit aan op het transcript")).toBeInTheDocument();
+    expect(screen.getByText("⚠ Datum ontbreekt")).toBeInTheDocument();
     expect(screen.queryByText(/%/)).not.toBeInTheDocument();
-    expect(screen.queryByText("Missing or empty required section: Notulen")).not.toBeInTheDocument();
-    expect(screen.queryByText("Draft is missing required content.")).not.toBeInTheDocument();
+    expect(screen.queryByText(/aandachtspunt/)).not.toBeInTheDocument();
   });
 
-  it("renders the 'no issues' Dutch precheck message when there are no blocking issues", async () => {
+  it("renders every item with a ✓ marker when all checks pass", async () => {
     vi.spyOn(client, "getDrafts").mockResolvedValue([
       draft({
         precheck: {
           id: "p1",
           overallScore: 1,
-          checklist: [{ item: "Notulen", passed: true }],
+          checklist: [
+            { item: "Deelnemers correct overgenomen", passed: true },
+            { item: "Datum correct overgenomen", passed: true },
+            { item: "Onderwerp correct overgenomen", passed: true },
+            { item: "Structuur voldoet", passed: true },
+            { item: "Inhoud sluit aan op het transcript", passed: true },
+          ],
           blockingIssues: [],
-          recommendation: "Looks complete.",
+          recommendation: "Alle controles geslaagd -- geen aandachtspunten gevonden.",
           createdAt: "2026-01-01",
         },
       }),
@@ -107,7 +123,13 @@ describe("routes/DraftReview/DraftReviewScreen", () => {
 
     renderScreen();
 
-    await screen.findByText("Controle uitgevoerd: het conceptverslag voldoet aan de basisstructuur.");
+    await screen.findByText("Kwaliteitscontrole");
+    expect(screen.getByText("✓ Deelnemers correct overgenomen")).toBeInTheDocument();
+    expect(screen.getByText("✓ Datum correct overgenomen")).toBeInTheDocument();
+    expect(screen.getByText("✓ Onderwerp correct overgenomen")).toBeInTheDocument();
+    expect(screen.getByText("✓ Structuur voldoet")).toBeInTheDocument();
+    expect(screen.getByText("✓ Inhoud sluit aan op het transcript")).toBeInTheDocument();
+    expect(screen.queryByText("⚠", { exact: false })).not.toBeInTheDocument();
   });
 
   it("uses the latest draft version when multiple exist", async () => {

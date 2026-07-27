@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { loadReportTypePrompt } from "../../src/ai/prompts/reportTypeLoader";
-import { run, SCHEMA_VERSION, SKILL_NAME } from "../../src/ai/skills/draftGenerator";
+import { DATE_NOT_RECORDED, run, SCHEMA_VERSION, SKILL_NAME } from "../../src/ai/skills/draftGenerator";
 import { DraftGeneratorEnvelopeSchema } from "../../src/ai/skillEnvelope";
 
 // Phase 11: DraftGenerator now calls the real Anthropic API (see
@@ -14,8 +14,15 @@ vi.mock("../../src/ai/anthropicClient", () => ({
   getAnthropicClient: () => ({ messages: { create: createMock } }),
 }));
 
-function mockLlmResponse(output: { title: string; attendees: string[]; sections: Array<{ heading: string; content: string }> }) {
-  createMock.mockResolvedValue({ content: [{ type: "text", text: JSON.stringify(output) }] });
+function mockLlmResponse(output: {
+  title: string;
+  attendees: string[];
+  sections: Array<{ heading: string; content: string }>;
+  conversation_date?: string | null;
+}) {
+  createMock.mockResolvedValue({
+    content: [{ type: "text", text: JSON.stringify({ conversation_date: null, ...output }) }],
+  });
 }
 
 describe("draftGenerator (real LLM, mocked client)", () => {
@@ -28,7 +35,6 @@ describe("draftGenerator (real LLM, mocked client)", () => {
     policyKey: "thematic",
     promptRef: "thematic.md",
     subject: "Werkoverleg",
-    date: "2026-01-01",
   };
 
   it("returns an envelope that validates against the shared schema", async () => {
@@ -61,7 +67,7 @@ describe("draftGenerator (real LLM, mocked client)", () => {
     );
   });
 
-  it("includes the subject, date, and merged content in the user message", async () => {
+  it("includes the subject and merged content in the user message", async () => {
     mockLlmResponse({ title: "x", attendees: [], sections: [] });
 
     await run(baseParams);
@@ -69,7 +75,6 @@ describe("draftGenerator (real LLM, mocked client)", () => {
     const call = createMock.mock.calls[0][0];
     const userMessage = call.messages[0].content as string;
     expect(userMessage).toContain(baseParams.subject);
-    expect(userMessage).toContain(baseParams.date);
     expect(userMessage).toContain(baseParams.mergedContent);
   });
 
@@ -95,14 +100,43 @@ describe("draftGenerator (real LLM, mocked client)", () => {
     expect(envelope.result.sections).toEqual([{ heading: "Samenvatting", content: "Kernpunten." }]);
   });
 
-  it("takes report_type, date, and subject from the workflow/policy, not the model", async () => {
+  it("takes report_type and subject from the workflow/policy, not the model", async () => {
     mockLlmResponse({ title: "iets heel anders", attendees: [], sections: [] });
 
     const envelope = await run(baseParams);
 
     expect(envelope.result.report_type).toBe(baseParams.policyKey);
-    expect(envelope.result.date).toBe(baseParams.date);
     expect(envelope.result.subject).toBe(baseParams.subject);
+  });
+
+  // Phase 15 item 1: the date used to be workflow.createdAt (the
+  // upload/generation moment, not the conversation date) -- see
+  // docs/phase-15/README.md item 1. The model now extracts it from the
+  // source text itself.
+  it("uses the model's extracted conversation_date when the source text mentions one", async () => {
+    mockLlmResponse({ title: "x", attendees: [], sections: [], conversation_date: "12 maart 2026" });
+
+    const envelope = await run(baseParams);
+
+    expect(envelope.result.date).toBe("12 maart 2026");
+  });
+
+  it("falls back to a 'not recorded' placeholder when the model finds no date in the source", async () => {
+    mockLlmResponse({ title: "x", attendees: [], sections: [], conversation_date: null });
+
+    const envelope = await run(baseParams);
+
+    expect(envelope.result.date).toBe(DATE_NOT_RECORDED);
+  });
+
+  it("does not instruct the model with a fixed date up front -- no 'Datum:' fact in the user message", async () => {
+    mockLlmResponse({ title: "x", attendees: [], sections: [] });
+
+    await run(baseParams);
+
+    const call = createMock.mock.calls[0][0];
+    const userMessage = call.messages[0].content as string;
+    expect(userMessage).not.toMatch(/^Datum:/m);
   });
 
   it("has a fixed high confidence, since DraftGenerator is a MANDATORY skill where confidence is never consulted", async () => {
@@ -189,5 +223,32 @@ describe("draftGenerator (real LLM, mocked client)", () => {
     for (const section of nonSummarySections) {
       expect(section.content.length).toBeGreaterThan(40);
     }
+  });
+
+  // Phase 15 item 3: a summary written as one "•"-separated string instead
+  // of real line breaks used to display/render as a single unreadable line
+  // downstream -- normalizeSectionContent() splits it before it's stored.
+  it("splits inline bullet-separated content ('• a • b • c') onto separate lines", async () => {
+    mockLlmResponse({
+      title: "x",
+      attendees: [],
+      sections: [{ heading: "Samenvatting", content: "• Eerste punt • Tweede punt • Derde punt" }],
+    });
+
+    const envelope = await run(baseParams);
+
+    expect(envelope.result.sections[0].content).toBe("• Eerste punt\n• Tweede punt\n• Derde punt");
+  });
+
+  it("leaves section content without any '•' marker unchanged", async () => {
+    mockLlmResponse({
+      title: "x",
+      attendees: [],
+      sections: [{ heading: "Samenvatting", content: "Gewone lopende tekst zonder bullets." }],
+    });
+
+    const envelope = await run(baseParams);
+
+    expect(envelope.result.sections[0].content).toBe("Gewone lopende tekst zonder bullets.");
   });
 });

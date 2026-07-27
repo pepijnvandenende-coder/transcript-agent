@@ -18,13 +18,17 @@ export async function runRenderFinalJob(job: JobRunnerInput): Promise<JobRunnerR
     throw new Error(`Workflow ${job.workflowId} has no approved draft to render (job ${job.id})`);
   }
 
-  const content = finalRenderer.renderContent({
+  const draftParams = {
     title: draft.title,
     attendees: draft.attendees as unknown as string[],
     date: draft.date,
     subject: draft.subject,
     sections: draft.sections as unknown as DraftSection[],
-  });
+  };
+  // Phase 15 item 4: .docx is the primary, downloadable final-report format
+  // -- see docs/phase-15/README.md item 4. renderContent() (Markdown) stays
+  // available on finalRenderer.ts but is no longer what's stored/downloaded.
+  const docxBuffer = await finalRenderer.renderDocx(draftParams);
   const envelope = finalRenderer.run();
 
   const { aiOutputId } = await handleSkillOutput({
@@ -40,8 +44,8 @@ export async function runRenderFinalJob(job: JobRunnerInput): Promise<JobRunnerR
   // COMPLETED is terminal with no re-entry edge, so there is only ever one
   // final report per workflow -- unlike Transcript/Draft's version-numbered
   // refs, this ref is fixed.
-  const storageRef = `${job.workflowId}/final-reports/report.md`;
-  await localFilesystemStorage.put(storageRef, content);
+  const storageRef = `${job.workflowId}/final-reports/report.docx`;
+  await localFilesystemStorage.putBinary(storageRef, docxBuffer);
 
   // Written regardless of the eventual approval outcome, mirroring how
   // ai_outputs preserves every attempt -- see prisma/schema.prisma's
@@ -51,7 +55,7 @@ export async function runRenderFinalJob(job: JobRunnerInput): Promise<JobRunnerR
     draftId: draft.id,
     aiOutputId,
     title: draft.title,
-    format: "markdown",
+    format: "docx",
     storageRef,
   });
 

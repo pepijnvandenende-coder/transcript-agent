@@ -26,8 +26,8 @@ function finalReport(overrides: Partial<FinalReport> = {}): FinalReport {
     draftId: "d1",
     aiOutputId: "a1",
     title: "Gespreksverslag Kickoff",
-    format: "markdown",
-    storageRef: "w1/final-reports/report.md",
+    format: "docx",
+    storageRef: "w1/final-reports/report.docx",
     createdAt: "2026-01-01",
     ...overrides,
   };
@@ -53,7 +53,7 @@ describe("routes/FinalDownload/FinalDownloadScreen", () => {
     renderScreen();
 
     await screen.findByText("Gespreksverslag Kickoff");
-    expect(screen.getByText("Formaat: markdown")).toBeInTheDocument();
+    expect(screen.getByText("Formaat: docx")).toBeInTheDocument();
     const link = screen.getByRole("link", { name: "Download eindrapport" });
     expect(link).toHaveAttribute("href", "/workflows/w1/final-report/download");
   });

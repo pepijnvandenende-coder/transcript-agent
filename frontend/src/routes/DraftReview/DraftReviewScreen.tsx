@@ -3,19 +3,24 @@ import { getDrafts, reviewDraft, type Draft, type DraftPrecheck, type Workflow }
 import { translateError } from "../../api-client/translateError";
 import { BackOrCancel } from "../../components/BackOrCancel";
 
-// Phase 11 feedback item 7: a percentage score isn't meaningful to an
-// operator. This derives an understandable Dutch sentence from the
-// structured checklist/blockingIssues fields instead of the backend's raw
-// (English, stub-generated) `recommendation` text or `overallScore` -- see
-// api-client/client.ts's DraftPrecheck type. `checklist[].item` is already a
-// Dutch section heading (e.g. "Notulen"), so no translation is needed there.
-function precheckMessage(precheck: DraftPrecheck): string {
-  if (precheck.blockingIssues.length === 0) {
-    return "Controle uitgevoerd: het conceptverslag voldoet aan de basisstructuur.";
-  }
-  const missing = precheck.checklist.filter((entry) => !entry.passed).map((entry) => entry.item);
-  const missingList = missing.length > 0 ? missing.join(", ") : "één of meer onderdelen";
-  return `Controle uitgevoerd: de volgende onderdelen ontbreken nog: ${missingList}.`;
+// Phase 15 item 2: showing only the failing items (as one summarizing
+// sentence) made correct items read as "missing" whenever they happened to
+// be bundled with something that failed. The backend now always returns a
+// fixed five-item Dutch checklist (see ai/skills/draftQualityPrecheck.ts) --
+// render every item with its own pass/fail marker instead of collapsing it
+// into a single sentence. `checklist[].item` is already a presentable Dutch
+// label for both outcomes (e.g. "Datum correct overgenomen" / "Datum
+// ontbreekt"), so no separate translation is needed here.
+function PrecheckChecklist({ precheck }: { precheck: DraftPrecheck }) {
+  return (
+    <ul>
+      {precheck.checklist.map((entry) => (
+        <li key={entry.item}>
+          {entry.passed ? "✓" : "⚠"} {entry.item}
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 // Rendered by WorkflowPage for DRAFT_PENDING_REVIEW. Covers both "Draft
@@ -89,14 +94,21 @@ export function DraftReviewScreen({
 
         {draft.precheck && (
           <div className="section">
-            <p>{precheckMessage(draft.precheck)}</p>
+            <h3>Kwaliteitscontrole</h3>
+            <PrecheckChecklist precheck={draft.precheck} />
           </div>
         )}
 
         {draft.sections.map((section) => (
           <section key={section.heading}>
             <h3>{section.heading}</h3>
-            <p>{section.content}</p>
+            {section.content
+              .split("\n")
+              .map((line) => line.trim())
+              .filter((line) => line.length > 0)
+              .map((line, index) => (
+                <p key={index}>{line}</p>
+              ))}
           </section>
         ))}
       </div>

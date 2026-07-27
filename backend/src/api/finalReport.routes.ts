@@ -42,9 +42,9 @@ finalReportRouter.get("/:id/final-report/download", async (req, res, next) => {
       res.status(404).json({ error: "Final report not available yet" });
       return;
     }
-    const content = await localFilesystemStorage.get(finalReport.storageRef);
-    res.setHeader("Content-Type", "text/markdown; charset=utf-8");
-    res.setHeader("Content-Disposition", `attachment; filename="final-report-${req.params.id}.md"`);
+    const content = await localFilesystemStorage.getBinary(finalReport.storageRef);
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    res.setHeader("Content-Disposition", `attachment; filename="eindrapport-${req.params.id}.docx"`);
     res.send(content);
   } catch (err) {
     next(err);

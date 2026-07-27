@@ -11,29 +11,25 @@ Je krijgt:
 
 De structurele opbouw (verplichte onderdelen, past de indeling bij het
 verslagtype) is al apart en deterministisch gecontroleerd -- dat hoef je niet
-te herhalen. Beoordeel uitsluitend de volgende twee inhoudelijke punten:
+te herhalen. Alleen velden die daadwerkelijk zijn ingevuld worden aan jou
+voorgelegd; ga voor elk ervan na of het overeenkomt met wat de brontekst
+daadwerkelijk vermeldt (niet met wat er "zou moeten" staan):
 
-1. **Deelnemers, datum en onderwerp correct overgenomen** -- komen de
-   genoemde deelnemers, de datum en het onderwerp in het concept overeen met
-   wat in de brontekst staat (voor zover die daar te achterhalen zijn)? Ga
-   niet af op wat er "zou moeten" staan, alleen op wat de brontekst
-   daadwerkelijk vermeldt.
-2. **Feitelijk en gebaseerd op de brontekst** -- bevat het verslag beweringen,
-   details of afspraken die niet uit de brontekst zijn te herleiden
-   (verzonnen of aangevulde informatie)? Kleine, voor de hand liggende
-   samenvattende formuleringen zijn geen probleem; nieuwe feiten die niet in
-   de bron voorkomen wel.
+1. **Deelnemers correct overgenomen** -- `attendees_correct`.
+2. **Datum correct overgenomen** -- `date_correct`.
+3. **Onderwerp correct overgenomen** -- `subject_correct`.
+4. **Feitelijk en gebaseerd op de brontekst** -- `factually_grounded`: bevat
+   het verslag beweringen, details of afspraken die niet uit de brontekst
+   zijn te herleiden (verzonnen of aangevulde informatie)? Kleine, voor de
+   hand liggende samenvattende formuleringen zijn geen probleem; nieuwe
+   feiten die niet in de bron voorkomen wel.
 
-Geef voor elk van deze twee punten exact één `checklist`-item met een korte
-Nederlandse `item`-label (bijvoorbeeld "Deelnemers/datum/onderwerp correct
-overgenomen" en "Tekst feitelijk onderbouwd door brontekst") en `passed`
-(true/false).
+Geef voor elk van deze vier punten een boolean (`true`/`false`). Als een veld
+niet is ingevuld (bijvoorbeeld geen deelnemers vermeld), beoordeel het dan
+toch naar beste weten aan de hand van wat er wél staat -- de uitkomst wordt
+alleen gebruikt wanneer het veld daadwerkelijk aanwezig is.
 
-Vul `blocking_issues` met korte, concrete Nederlandse omschrijvingen van elk
-punt dat niet is geslaagd (bijvoorbeeld welke deelnemer niet in de brontekst
-voorkomt, of welke bewering niet is terug te vinden). Laat leeg als beide
-punten slagen.
-
-Schrijf `recommendation` in het Nederlands, in maximaal twee zinnen, gericht
-op de menselijke reviewer: een korte duiding van wat je hebt gevonden, niet
-een herhaling van de checklist.
+Vul `issues` met korte, concrete Nederlandse omschrijvingen van elk punt dat
+niet is geslaagd (bijvoorbeeld welke deelnemer niet in de brontekst
+voorkomt, of welke bewering niet is terug te vinden). Laat leeg als alles
+slaagt.
