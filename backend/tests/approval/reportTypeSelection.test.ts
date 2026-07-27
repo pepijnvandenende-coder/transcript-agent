@@ -111,8 +111,9 @@ describe("approval/reportTypeSelection", () => {
         language: "nl",
         promptVersion: "v1",
         promptRef: "thematic.md",
-        requiredSections: ["Samenvatting", "Notulen"],
+        requiredSections: ["Samenvatting"],
         optionalSections: [],
+        bodyContentRule: { type: "topic_sections", minCount: 1 },
       },
     });
     await prisma.reportTypePolicy.upsert({
@@ -124,8 +125,9 @@ describe("approval/reportTypeSelection", () => {
         language: "nl",
         promptVersion: "v1",
         promptRef: "qa.md",
-        requiredSections: ["Samenvatting", "Notulen"],
+        requiredSections: ["Samenvatting"],
         optionalSections: [],
+        bodyContentRule: { type: "qa_pairs", minCount: 1 },
       },
     });
 

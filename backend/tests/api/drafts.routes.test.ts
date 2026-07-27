@@ -163,8 +163,9 @@ describe("Phase 7 draft & review API", () => {
         language: "nl",
         promptVersion: "v1",
         promptRef: "thematic.md",
-        requiredSections: ["Samenvatting", "Notulen"],
+        requiredSections: ["Samenvatting"],
         optionalSections: [],
+        bodyContentRule: { type: "topic_sections", minCount: 1 },
       },
     });
 

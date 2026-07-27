@@ -398,6 +398,12 @@ model ReportTypePolicy {
   promptRef        String   @map("prompt_ref")
   requiredSections Json     @map("required_sections")
   optionalSections Json     @map("optional_sections")
+  // Phase 14: data-driven rule for validating the body content section
+  // (e.g. "Notulen") whose internal shape differs per report type --
+  // {type: "topic_sections", minCount} for thematic, {type: "qa_pairs",
+  // minCount} for Q&A. Keeps reportStructureValidator.ts generic so a new
+  // report type stays a catalog row + prompt file, no code changes.
+  bodyContentRule  Json     @map("body_content_rule")
   isActive         Boolean  @default(true) @map("is_active")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")

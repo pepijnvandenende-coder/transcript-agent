@@ -183,8 +183,9 @@ describe("Phase 9 final-report API", () => {
         language: "nl",
         promptVersion: "v1",
         promptRef: "thematic.md",
-        requiredSections: ["Samenvatting", "Notulen"],
+        requiredSections: ["Samenvatting"],
         optionalSections: [],
+        bodyContentRule: { type: "topic_sections", minCount: 1 },
       },
     });
 

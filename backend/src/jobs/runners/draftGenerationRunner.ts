@@ -1,6 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { handleSkillOutput } from "../../approval/gateway";
-import { validateRequiredSections } from "../../approval/reportStructureValidator";
+import { validateDraftStructure } from "../../approval/reportStructureValidator";
 import * as draftGenerator from "../../ai/skills/draftGenerator";
 import { createDraftVersion } from "../../persistence/repositories/draftRepository";
 import { findLatestMerge } from "../../persistence/repositories/mergeRepository";
@@ -55,7 +55,17 @@ export async function runGenerateDraftJob(job: JobRunnerInput): Promise<JobRunne
     schemaVersion: draftGenerator.SCHEMA_VERSION,
     retryOfAiOutputId: job.retryOfAiOutputId ?? undefined,
     retryMode: job.retryMode ?? undefined,
-    additionalValidation: () => validateRequiredSections(envelope.result.sections, policy),
+    additionalValidation: () =>
+      validateDraftStructure(
+        {
+          title: envelope.result.title,
+          attendees: envelope.result.attendees,
+          date: envelope.result.date,
+          subject: envelope.result.subject,
+          sections: envelope.result.sections,
+        },
+        policy,
+      ),
   });
 
   // Written regardless of the eventual approval outcome, mirroring how

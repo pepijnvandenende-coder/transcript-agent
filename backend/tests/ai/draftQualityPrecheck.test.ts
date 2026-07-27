@@ -1,91 +1,181 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { DraftQualityPrecheckEnvelopeSchema } from "../../src/ai/skillEnvelope";
 import * as draftQualityPrecheck from "../../src/ai/skills/draftQualityPrecheck";
 
-// Pure logic -- no database needed.
-describe("ai/skills/draftQualityPrecheck", () => {
-  const requiredSections = ["Samenvatting", "Notulen"];
+// Phase 14: replaces the Phase 7 deterministic-stub tests with the real-LLM
+// mocking pattern of tests/ai/reportTypeAdvisor.test.ts / draftGenerator.test.ts
+// -- prompt construction and response parsing are exercised, not the real
+// model. The structural half (title/attendees/date/subject/required
+// sections/bodyContentRule) is now computed up front by
+// approval/reportStructureValidator.ts and passed in as `structuralItems`,
+// so it's supplied directly here rather than recomputed.
+const createMock = vi.fn();
+vi.mock("../../src/ai/anthropicClient", () => ({
+  getAnthropicClient: () => ({ messages: { create: createMock } }),
+}));
 
-  it("passes every required section that has non-empty content", () => {
-    const envelope = draftQualityPrecheck.run({
-      sections: [
-        { heading: "Samenvatting", content: "x" },
-        { heading: "Notulen", content: "y" },
+const PASSING_STRUCTURAL_ITEMS = [
+  { item: "Titel", passed: true },
+  { item: "Aanwezige deelnemers", passed: true },
+  { item: "Datum", passed: true },
+  { item: "Onderwerp", passed: true },
+  { item: "Samenvatting", passed: true },
+  { item: "Thematische notulen", passed: true },
+];
+
+const BASE_PARAMS = {
+  title: "Gespreksverslag Test",
+  attendees: ["Jan Jansen (projectleider)"],
+  date: "2026-01-01",
+  subject: "Testonderwerp",
+  sections: [
+    { heading: "Samenvatting", content: "Kernpunten van het gesprek." },
+    { heading: "Notulen", content: "Gedetailleerde weergave van het gesprek." },
+  ],
+  sourceText: "Jan Jansen: We bespraken de kernpunten op 2026-01-01.",
+};
+
+function mockLlmResponse(output: { checklist: Array<{ item: string; passed: boolean }>; blocking_issues: string[]; recommendation: string }) {
+  createMock.mockResolvedValue({ content: [{ type: "text", text: JSON.stringify(output) }] });
+}
+
+describe("ai/skills/draftQualityPrecheck (real LLM, mocked client)", () => {
+  beforeEach(() => {
+    createMock.mockReset();
+  });
+
+  it("skips the LLM call and reports structural failures when the structural precheck fails", async () => {
+    const structuralItems = [...PASSING_STRUCTURAL_ITEMS.slice(0, -1), { item: "Thematische notulen", passed: false }];
+
+    const envelope = await draftQualityPrecheck.run({ ...BASE_PARAMS, structuralItems });
+
+    expect(createMock).not.toHaveBeenCalled();
+    expect(envelope.result.checklist).toEqual(structuralItems);
+    expect(envelope.result.blocking_issues).toEqual(["Ontbrekend of leeg verplicht onderdeel: Thematische notulen"]);
+    expect(envelope.result.overall_score).toBeLessThan(1);
+  });
+
+  it("calls the LLM and merges structural + content-judged checklist items once structure passes", async () => {
+    mockLlmResponse({
+      checklist: [
+        { item: "Deelnemers/datum/onderwerp correct overgenomen", passed: true },
+        { item: "Tekst feitelijk onderbouwd door brontekst", passed: true },
       ],
-      requiredSections,
+      blocking_issues: [],
+      recommendation: "Ziet er goed uit.",
     });
 
+    const envelope = await draftQualityPrecheck.run({ ...BASE_PARAMS, structuralItems: PASSING_STRUCTURAL_ITEMS });
+
+    expect(createMock).toHaveBeenCalledTimes(1);
     expect(envelope.result.checklist).toEqual([
-      { item: "Samenvatting", passed: true },
-      { item: "Notulen", passed: true },
+      ...PASSING_STRUCTURAL_ITEMS,
+      { item: "Deelnemers/datum/onderwerp correct overgenomen", passed: true },
+      { item: "Tekst feitelijk onderbouwd door brontekst", passed: true },
     ]);
-    expect(envelope.result.blocking_issues).toEqual([]);
     expect(envelope.result.overall_score).toBe(1);
+    expect(envelope.result.blocking_issues).toEqual([]);
+    expect(envelope.result.recommendation).toBe("Ziet er goed uit.");
   });
 
-  it("fails a required section that's missing entirely", () => {
-    const envelope = draftQualityPrecheck.run({
-      sections: [{ heading: "Samenvatting", content: "x" }],
-      requiredSections,
+  it("surfaces a signaled deviation -- e.g. attendees not actually in the source text -- as a failed checklist item", async () => {
+    mockLlmResponse({
+      checklist: [
+        { item: "Deelnemers/datum/onderwerp correct overgenomen", passed: false },
+        { item: "Tekst feitelijk onderbouwd door brontekst", passed: true },
+      ],
+      blocking_issues: ["Deelnemer 'Piet Peters' komt niet voor in de brontekst."],
+      recommendation: "Controleer de deelnemerslijst.",
     });
 
-    expect(envelope.result.checklist).toEqual([
+    const envelope = await draftQualityPrecheck.run({ ...BASE_PARAMS, structuralItems: PASSING_STRUCTURAL_ITEMS });
+
+    expect(envelope.result.blocking_issues).toEqual(["Deelnemer 'Piet Peters' komt niet voor in de brontekst."]);
+    expect(envelope.result.overall_score).toBeLessThan(1);
+  });
+
+  it("surfaces a signaled factual deviation -- content not grounded in the source -- as a failed checklist item", async () => {
+    mockLlmResponse({
+      checklist: [
+        { item: "Deelnemers/datum/onderwerp correct overgenomen", passed: true },
+        { item: "Tekst feitelijk onderbouwd door brontekst", passed: false },
+      ],
+      blocking_issues: ["Het verslag noemt een besluit dat niet in de brontekst voorkomt."],
+      recommendation: "Controleer de feitelijke onderbouwing.",
+    });
+
+    const envelope = await draftQualityPrecheck.run({ ...BASE_PARAMS, structuralItems: PASSING_STRUCTURAL_ITEMS });
+
+    expect(envelope.result.checklist.find((entry) => entry.item === "Tekst feitelijk onderbouwd door brontekst")?.passed).toBe(false);
+    expect(envelope.result.blocking_issues).toEqual(["Het verslag noemt een besluit dat niet in de brontekst voorkomt."]);
+  });
+
+  it("includes the draft content and source text in the user message sent to the LLM", async () => {
+    mockLlmResponse({ checklist: [], blocking_issues: [], recommendation: "x" });
+
+    await draftQualityPrecheck.run({ ...BASE_PARAMS, structuralItems: PASSING_STRUCTURAL_ITEMS });
+
+    const call = createMock.mock.calls[0][0];
+    const userMessage = call.messages[0].content as string;
+    expect(userMessage).toContain(BASE_PARAMS.title);
+    expect(userMessage).toContain(BASE_PARAMS.sourceText);
+    expect(userMessage).toContain("Gedetailleerde weergave van het gesprek.");
+  });
+
+  // Regression test for the exact false positive found in the last live
+  // test (docs/phase-14/README.md, Bevinding 2): a Q&A draft with
+  // topic-headed sections (no literal "Notulen" heading) must not produce
+  // a "Notulen ontbreekt" (or any structural) blocking issue.
+  it("regression: a qa draft with topic-headed Q&A sections produces no blocking issues", async () => {
+    mockLlmResponse({
+      checklist: [
+        { item: "Deelnemers/datum/onderwerp correct overgenomen", passed: true },
+        { item: "Tekst feitelijk onderbouwd door brontekst", passed: true },
+      ],
+      blocking_issues: [],
+      recommendation: "Ziet er goed uit.",
+    });
+
+    const qaStructuralItems = [
+      { item: "Titel", passed: true },
+      { item: "Aanwezige deelnemers", passed: true },
+      { item: "Datum", passed: true },
+      { item: "Onderwerp", passed: true },
       { item: "Samenvatting", passed: true },
-      { item: "Notulen", passed: false },
-    ]);
-    expect(envelope.result.blocking_issues).toEqual(["Missing or empty required section: Notulen"]);
-    expect(envelope.result.overall_score).toBe(0.5);
-  });
+      { item: "Vraag/antwoord-secties", passed: true },
+    ];
 
-  it("fails a required section that's present but has only whitespace content", () => {
-    const envelope = draftQualityPrecheck.run({
+    const envelope = await draftQualityPrecheck.run({
+      ...BASE_PARAMS,
       sections: [
-        { heading: "Samenvatting", content: "x" },
-        { heading: "Notulen", content: "   " },
+        { heading: "Samenvatting", content: "Kernpunten van de vraag-en-antwoordsessie." },
+        {
+          heading: "Importeren van gegevens",
+          content: "Vraag: Hoe importeer ik gegevens?\n\nAntwoord: Via het menu Import.",
+        },
       ],
-      requiredSections,
+      structuralItems: qaStructuralItems,
     });
 
-    expect(envelope.result.checklist.find((entry) => entry.item === "Notulen")?.passed).toBe(false);
-    expect(envelope.result.blocking_issues).toContain("Missing or empty required section: Notulen");
+    expect(envelope.result.blocking_issues).toEqual([]);
+    expect(envelope.result.checklist.find((entry) => entry.item === "Notulen")).toBeUndefined();
   });
 
-  it("scores 0 when every required section is missing", () => {
-    const envelope = draftQualityPrecheck.run({ sections: [], requiredSections });
-    expect(envelope.result.overall_score).toBe(0);
-    expect(envelope.result.blocking_issues).toHaveLength(2);
-    expect(envelope.result.recommendation).toMatch(/missing/i);
-  });
-
-  it("recommendation reflects structural completeness when there are no blocking issues", () => {
-    const envelope = draftQualityPrecheck.run({
-      sections: [
-        { heading: "Samenvatting", content: "x" },
-        { heading: "Notulen", content: "y" },
+  it("returns an envelope that validates against the shared schema", async () => {
+    mockLlmResponse({
+      checklist: [
+        { item: "Deelnemers/datum/onderwerp correct overgenomen", passed: true },
+        { item: "Tekst feitelijk onderbouwd door brontekst", passed: true },
       ],
-      requiredSections,
+      blocking_issues: [],
+      recommendation: "Ziet er goed uit.",
     });
-    expect(envelope.result.recommendation).toMatch(/structurally complete/i);
-  });
 
-  it("is deterministic -- identical input produces identical output", () => {
-    const input = {
-      sections: [
-        { heading: "Samenvatting", content: "x" },
-        { heading: "Notulen", content: "y" },
-      ],
-      requiredSections,
-    };
-    expect(draftQualityPrecheck.run(input).result).toEqual(draftQualityPrecheck.run(input).result);
-  });
+    const envelope = await draftQualityPrecheck.run({ ...BASE_PARAMS, structuralItems: PASSING_STRUCTURAL_ITEMS });
 
-  it("emits a valid envelope shape", () => {
-    const envelope = draftQualityPrecheck.run({
-      sections: [{ heading: "Samenvatting", content: "x" }],
-      requiredSections: ["Samenvatting"],
-    });
-    expect(envelope.skill).toBe("DraftQualityPrecheck");
+    const parsed = DraftQualityPrecheckEnvelopeSchema.safeParse(envelope);
+    expect(parsed.success).toBe(true);
+    expect(envelope.skill).toBe(draftQualityPrecheck.SKILL_NAME);
     expect(envelope.schema_version).toBe(draftQualityPrecheck.SCHEMA_VERSION);
-    expect(envelope.confidence).toBeGreaterThanOrEqual(0);
-    expect(envelope.confidence).toBeLessThanOrEqual(1);
   });
 });

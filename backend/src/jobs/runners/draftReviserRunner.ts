@@ -2,7 +2,7 @@ import type { Prisma } from "@prisma/client";
 import * as draftReviser from "../../ai/skills/draftReviser";
 import type { DraftSection } from "../../ai/skillEnvelope";
 import { handleSkillOutput } from "../../approval/gateway";
-import { validateRequiredSections } from "../../approval/reportStructureValidator";
+import { validateDraftStructure } from "../../approval/reportStructureValidator";
 import { createDraftVersion, findLatestDraft } from "../../persistence/repositories/draftRepository";
 import { findFeedbackForDraft } from "../../persistence/repositories/reviewFeedbackRepository";
 import { findPolicyByKey } from "../../persistence/repositories/reportTypePolicyRepository";
@@ -43,7 +43,17 @@ export async function runReviseDraftJob(job: JobRunnerInput): Promise<JobRunnerR
     schemaVersion: draftReviser.SCHEMA_VERSION,
     retryOfAiOutputId: job.retryOfAiOutputId ?? undefined,
     retryMode: job.retryMode ?? undefined,
-    additionalValidation: () => validateRequiredSections(envelope.result.sections, policy),
+    additionalValidation: () =>
+      validateDraftStructure(
+        {
+          title: previousDraft.title,
+          attendees: previousDraft.attendees,
+          date: previousDraft.date,
+          subject: previousDraft.subject,
+          sections: envelope.result.sections,
+        },
+        policy,
+      ),
   });
 
   // A new version, not an update -- Draft stays insert-only. Header metadata

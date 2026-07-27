@@ -120,4 +120,74 @@ describe("draftGenerator (real LLM, mocked client)", () => {
 
     expect(envelope.result.coverage).toBe(0);
   });
+
+  // Phase 14 (docs/phase-14/README.md, "Transcript + notities als context
+  // meegeeft"): mergedContent is Merger's already-combined output, so a
+  // notes-sourced section (distinct from transcript-only content) reaching
+  // the user message confirms both sources flow through, not just the
+  // transcript.
+  it("includes notes-sourced content, not just transcript content, when the merge combined both", async () => {
+    mockLlmResponse({ title: "x", attendees: [], sections: [] });
+
+    const mergedContent = [
+      "Transcript: we bespraken de voortgang van het project.",
+      "Eigen aantekening: actiepunt toevoegen voor de volgende sprint.",
+    ].join("\n");
+
+    await run({ ...baseParams, mergedContent });
+
+    const call = createMock.mock.calls[0][0];
+    const userMessage = call.messages[0].content as string;
+    expect(userMessage).toContain("Transcript: we bespraken de voortgang van het project.");
+    expect(userMessage).toContain("Eigen aantekening: actiepunt toevoegen voor de volgende sprint.");
+  });
+
+  // No language-detection library is introduced (out of scope without
+  // explicit approval to change the prompt) -- this only confirms the code
+  // path is a pure pass-through, i.e. nothing strips or mangles the model's
+  // Dutch response, so if the real model does answer in Dutch (as its system
+  // prompt instructs), that text survives unmodified into the result.
+  it("passes the model's Dutch response through unmodified (no code-side translation/mangling)", async () => {
+    const dutchTitle = "Gespreksverslag Werkoverleg Budgetbespreking";
+    mockLlmResponse({
+      title: dutchTitle,
+      attendees: ["Jan Jansen (voorzitter)"],
+      sections: [{ heading: "Samenvatting", content: "Wij bespraken het budget en de planning voor volgend kwartaal." }],
+    });
+
+    const envelope = await run(baseParams);
+
+    expect(envelope.result.title).toBe(dutchTitle);
+    expect(envelope.result.sections[0].content).toBe("Wij bespraken het budget en de planning voor volgend kwartaal.");
+  });
+
+  // Phase 14 ("genereert het volledige gespreksverslag" / geen loutere
+  // samenvatting): a realistic multi-topic transcript should come back as
+  // multiple, substantial sections -- not one short summary paragraph.
+  it("parses multiple substantial sections for a multi-topic transcript, not a single short paragraph", async () => {
+    mockLlmResponse({
+      title: "Gespreksverslag Werkoverleg",
+      attendees: ["Jan Jansen (voorzitter)"],
+      sections: [
+        { heading: "Samenvatting", content: "Korte samenvatting van de kernpunten." },
+        {
+          heading: "Budget",
+          content:
+            "Uitgebreide bespreking van het budget voor volgend kwartaal, inclusief de verwachte kosten per afdeling.",
+        },
+        {
+          heading: "Personeelsbezetting",
+          content: "Uitgebreide bespreking van de personeelsbezetting en de openstaande vacatures.",
+        },
+      ],
+    });
+
+    const envelope = await run(baseParams);
+
+    const nonSummarySections = envelope.result.sections.filter((section) => section.heading !== "Samenvatting");
+    expect(nonSummarySections.length).toBeGreaterThan(1);
+    for (const section of nonSummarySections) {
+      expect(section.content.length).toBeGreaterThan(40);
+    }
+  });
 });

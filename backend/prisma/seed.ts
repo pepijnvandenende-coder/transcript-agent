@@ -115,28 +115,30 @@ async function main() {
     update: {
       displayName: "Thematisch gespreksverslag",
       language: "nl",
-      promptVersion: "v1",
+      promptVersion: "v2",
       promptRef: "thematic.md",
-      requiredSections: ["Samenvatting", "Notulen"],
+      requiredSections: ["Samenvatting"],
       optionalSections: [
         "Acties en vervolgstappen",
         "Openstaande vragen / onduidelijkheden",
         "Bijlagen/verwijzingen",
       ],
+      bodyContentRule: { type: "topic_sections", minCount: 1 },
       isActive: true,
     },
     create: {
       key: "thematic",
       displayName: "Thematisch gespreksverslag",
       language: "nl",
-      promptVersion: "v1",
+      promptVersion: "v2",
       promptRef: "thematic.md",
-      requiredSections: ["Samenvatting", "Notulen"],
+      requiredSections: ["Samenvatting"],
       optionalSections: [
         "Acties en vervolgstappen",
         "Openstaande vragen / onduidelijkheden",
         "Bijlagen/verwijzingen",
       ],
+      bodyContentRule: { type: "topic_sections", minCount: 1 },
     },
   });
 
@@ -145,28 +147,30 @@ async function main() {
     update: {
       displayName: "Vraag & antwoord gespreksverslag",
       language: "nl",
-      promptVersion: "v1",
+      promptVersion: "v2",
       promptRef: "qa.md",
-      requiredSections: ["Samenvatting", "Notulen"],
+      requiredSections: ["Samenvatting"],
       optionalSections: [
         "Acties en vervolgstappen",
         "Openstaande vragen / onduidelijkheden",
         "Bijlagen/verwijzingen",
       ],
+      bodyContentRule: { type: "qa_pairs", minCount: 1 },
       isActive: true,
     },
     create: {
       key: "qa",
       displayName: "Vraag & antwoord gespreksverslag",
       language: "nl",
-      promptVersion: "v1",
+      promptVersion: "v2",
       promptRef: "qa.md",
-      requiredSections: ["Samenvatting", "Notulen"],
+      requiredSections: ["Samenvatting"],
       optionalSections: [
         "Acties en vervolgstappen",
         "Openstaande vragen / onduidelijkheden",
         "Bijlagen/verwijzingen",
       ],
+      bodyContentRule: { type: "qa_pairs", minCount: 1 },
     },
   });
 }
