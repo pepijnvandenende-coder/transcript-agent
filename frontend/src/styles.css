@@ -215,6 +215,31 @@ th {
   font-weight: 600;
 }
 
+/* Open questions ("Vervolgonderzoek" -> "Openstaande vragen", see
+   routes/FinalDownload/FinalDownloadScreen.tsx): each question is its own
+   block, not a bullet list -- the gap gives each block clear vertical
+   separation from the next rather than the tighter default paragraph flow. */
+.open-questions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.open-question-title {
+  font-weight: 600;
+  margin: 0 0 var(--space-xs);
+}
+
+.open-question-context {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.open-question-number,
+.open-question-label {
+  margin-right: var(--space-xs);
+}
+
 .conflict-sources {
   display: flex;
   gap: var(--space-md);
