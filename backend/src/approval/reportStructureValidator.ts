@@ -29,19 +29,12 @@ export interface StructureCheckItem {
   passed: boolean;
 }
 
-function asStringArray(value: unknown): string[] {
+export function asStringArray(value: unknown): string[] {
   return Array.isArray(value) ? (value as string[]) : [];
 }
 
 function isNonEmpty(value: unknown): boolean {
   return typeof value === "string" && value.trim().length > 0;
-}
-
-// Content-based, not heading-based, per the instruction "gebruik geen
-// letterlijke controle op het woord 'Notulen' voor vraag & antwoord" -- a
-// section qualifies as a Q&A pair by what it says, not what it's called.
-function isQaPair(content: string): boolean {
-  return /vraag/i.test(content) && /antwoord/i.test(content);
 }
 
 // Single source of truth for "does this draft structurally fit its report
@@ -76,12 +69,19 @@ export function checkDraftStructure(
     (section) => !knownMetaHeadings.has(section.heading) && section.content.trim().length > 0,
   );
 
+  // qa_pairs no longer keyword-matches the section content for "vraag"/
+  // "antwoord" -- qa.md never instructs the model to literally write those
+  // words in the body (that "Vraag 1:"/"Antwoord:" labeling is reserved for
+  // the separate "Openstaande vragen" section), so a naturally-phrased,
+  // topic-headed answer produced exactly per prompt was failing this check
+  // on wording alone. Both rule types now just count non-empty body
+  // sections; the distinct item label is kept for the operator-facing
+  // checklist.
   const rule = policy.bodyContentRule as BodyContentRule | undefined;
   if (rule?.type === "topic_sections") {
     items.push({ item: "Thematische notulen", passed: bodySections.length >= rule.minCount });
   } else if (rule?.type === "qa_pairs") {
-    const qaSections = bodySections.filter((section) => isQaPair(section.content));
-    items.push({ item: "Vraag/antwoord-secties", passed: qaSections.length >= rule.minCount });
+    items.push({ item: "Vraag/antwoord-secties", passed: bodySections.length >= rule.minCount });
   }
 
   return items;

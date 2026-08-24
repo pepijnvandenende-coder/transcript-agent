@@ -76,12 +76,33 @@ describe("reportStructureValidator", () => {
       expect(items.find((item) => item.item === "Vraag/antwoord-secties")?.passed).toBe(true);
     });
 
-    it("a section literally called Notulen without a question/answer marker fails on content, never on the name", () => {
+    // qa_pairs no longer keyword-matches "vraag"/"antwoord" in the content --
+    // qa.md never instructs the model to literally write those words in the
+    // body, so a naturally-phrased answer with no such wording is a valid
+    // Q&A section, not a failure.
+    it("a naturally-phrased section with no literal 'vraag'/'antwoord' wording still passes", () => {
       const draft = {
         ...baseDraft,
         sections: [
           { heading: "Samenvatting", content: "Kernpunten." },
-          { heading: "Notulen", content: "Gewoon een lopende tekst zonder duidelijke structuur." },
+          {
+            heading: "Importeren van gegevens",
+            content: "Een deelnemer wilde weten hoe gegevens worden ingeladen. Toegelicht werd dat dit via het menu Import gebeurt.",
+          },
+        ],
+      };
+      const result = validateDraftStructure(draft, qaPolicy);
+      expect(result.valid).toBe(true);
+      const items = checkDraftStructure(draft, qaPolicy);
+      expect(items.find((item) => item.item === "Vraag/antwoord-secties")?.passed).toBe(true);
+    });
+
+    it("a section literally called Notulen with empty content fails on content, never on the name", () => {
+      const draft = {
+        ...baseDraft,
+        sections: [
+          { heading: "Samenvatting", content: "Kernpunten." },
+          { heading: "Notulen", content: "   " },
         ],
       };
       const result = validateDraftStructure(draft, qaPolicy);
