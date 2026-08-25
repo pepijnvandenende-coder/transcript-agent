@@ -79,6 +79,20 @@ describe("routes/ReportTypeSelection/ReportTypeSelectionScreen", () => {
     expect(screen.getByText(/voorgesteld door de AI/)).toBeInTheDocument();
   });
 
+  // Requirement C: exactly two report types exist -- "Acties en vervolgstappen"
+  // is an optional section of both, never a report type or variant of one,
+  // so the picker must never render a third option (e.g. "... (met acties)").
+  it("C: renders exactly two report type options, never a third variant based on actions", async () => {
+    mockLoaded();
+
+    renderScreen();
+
+    await screen.findByLabelText(/Thematisch gespreksverslag/);
+    const options = screen.getAllByRole("radio");
+    expect(options).toHaveLength(2);
+    expect(screen.queryByText(/met acties/i)).not.toBeInTheDocument();
+  });
+
   it("tolerates a 404 (no suggestion yet) without showing an error", async () => {
     vi.spyOn(client, "getReportTypePolicies").mockResolvedValue(POLICIES);
     vi.spyOn(client, "getReportTypeSuggestion").mockRejectedValue(new ApiError(404, "No report type suggestion yet"));

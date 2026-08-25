@@ -1,25 +1,24 @@
 import { randomUUID } from "node:crypto";
 import { rmSync } from "node:fs";
+import type { Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { ActorType, JobStatus, JobType, PolicyType } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-// Requirement G: this file proves DraftQualityPrecheck and DraftGenerator can
-// never draw a different conclusion about whether the source contains
-// concrete actions/vervolgstappen, by running the REAL runners
-// (draftGenerationRunner.ts, draftQualityPrecheckRunner.ts) through the real
-// job queue -- not by hand-building consistent envelopes (which would prove
-// nothing about the wiring itself).
+// Regression coverage for a real incident: tests/jobs/draftActionsConsistency.test.ts
+// used to upsert a fabricated third report_type_policies row
+// ("thematic_actions" / "Thematisch gespreksverslag (met acties)") into the
+// shared Postgres database and never cleaned it up, so it leaked into
+// GET /report-type-policies, ReportTypeAdvisor's catalog, and the frontend
+// picker permanently -- three options where there must only ever be two.
 //
-// Same mocking convention as tests/jobs/worker.test.ts: getAnthropicClient()
-// is shared by every LLM-calling skill, so this branches on the requested
-// structured-output schema's own properties. The DraftGenerator branch
-// additionally inspects the outgoing user message for ACTIONS_MARKER (only
-// present in one of the two transcripts used below) to decide whether its
-// mocked response reports actions_present true or false -- this is the one
-// and only place in this whole pipeline that "decides" whether actions
-// exist, exactly like the real model is meant to be the one place that
-// decides it.
+// Architecture this file locks in: "Acties en vervolgstappen" is an OPTIONAL
+// SECTION of both real report types (thematic, qa), never its own report
+// type or a variant of one. actionsPresent must never influence which report
+// type exists, is suggested, or is stored -- it only controls whether the
+// optional actions section is included in whichever report type the human
+// actually chose.
 const ACTIONS_MARKER = "Jan zegt toe het verslag na afloop rond te sturen.";
 
 vi.mock("../../src/ai/anthropicClient", () => ({
@@ -40,8 +39,6 @@ vi.mock("../../src/ai/anthropicClient", () => ({
             });
           }
           if (isDraftQualityPrecheck) {
-            // Deliberately never asked (and never answers) whether actions
-            // are present -- see draftQualityPrecheck.ts/draftQualityPrecheck.md.
             return Promise.resolve({
               content: [
                 {
@@ -57,10 +54,9 @@ vi.mock("../../src/ai/anthropicClient", () => ({
             });
           }
 
-          // DraftGenerator -- the ONE place this mock decides actions_present,
-          // based on whether the source it was actually given contains the
-          // marker, exactly the judgment ACTIONS_PRESENCE_INSTRUCTIONS asks
-          // the real model to make.
+          // DraftGenerator -- actions_present is decided purely from the
+          // source content, never from (and never influencing) which report
+          // type was selected.
           const userMessage = params.messages[0].content;
           const hasActions = userMessage.includes(ACTIONS_MARKER);
           return Promise.resolve({
@@ -96,17 +92,20 @@ vi.mock("../../src/ai/anthropicClient", () => ({
   }),
 }));
 
+import { createApp } from "../../src/api/app";
+import * as reportTypeAdvisor from "../../src/ai/skills/reportTypeAdvisor";
 import { selectReportType } from "../../src/approval/reportTypeSelection";
 import { env } from "../../src/config/env";
 import { enqueue } from "../../src/jobs/queue";
 import { processNextJob } from "../../src/jobs/worker";
 import { prisma } from "../../src/persistence/prismaClient";
+import { findActivePolicies } from "../../src/persistence/repositories/reportTypePolicyRepository";
 import { createNoteVersion } from "../../src/persistence/repositories/noteRepository";
 import { createTranscriptVersion } from "../../src/persistence/repositories/transcriptRepository";
 import * as engine from "../../src/workflow/engine";
 import { WorkflowState } from "../../src/workflow/states";
 
-const REPORT_TYPE_KEY = "thematic";
+const CANONICAL_KEYS = ["qa", "thematic"];
 const SKILL_NAMES = ["TranscriptQualityChecker", "Merger", "ConflictDetector", "ReportTypeAdvisor", "DraftGenerator", "DraftQualityPrecheck"];
 
 async function processUntilSettled(jobId: string, maxAttempts = 50): Promise<void> {
@@ -120,13 +119,18 @@ async function processUntilSettled(jobId: string, maxAttempts = 50): Promise<voi
   }
 }
 
+async function assertExactlyTwoCanonicalPolicies() {
+  const policies = await findActivePolicies();
+  expect(policies.map((policy) => policy.key).sort()).toEqual(CANONICAL_KEYS);
+}
+
 /**
- * Drives a fresh workflow all the way from upload through DRAFT_QUALITY_PRECHECK
- * via the real job queue (not hand-fed envelopes), returning the persisted
- * Draft and DraftPrecheck rows so the two can be compared directly.
+ * Drives a fresh workflow all the way from upload through DRAFT_PENDING_REVIEW
+ * via the real job queue, selecting `reportType` explicitly (never the AI's
+ * suggestion), and returns the persisted workflow/draft rows.
  */
-async function runPipeline(params: { userId: string; title: string; transcriptContent: string }) {
-  const { userId, title, transcriptContent } = params;
+async function runPipeline(params: { userId: string; title: string; transcriptContent: string; reportType: string }) {
+  const { userId, title, transcriptContent, reportType } = params;
 
   const workflow = await engine.createWorkflow({ title, createdById: userId });
   await engine.transition({
@@ -160,7 +164,7 @@ async function runPipeline(params: { userId: string; title: string; transcriptCo
   const suggestJob = await prisma.job.findFirstOrThrow({ where: { workflowId: workflow.id, jobType: JobType.SUGGEST_REPORT_TYPE }, orderBy: { createdAt: "desc" } });
   await processUntilSettled(suggestJob.id);
 
-  await selectReportType({ workflowId: workflow.id, actorId: userId, reportType: REPORT_TYPE_KEY });
+  await selectReportType({ workflowId: workflow.id, actorId: userId, reportType });
 
   const generateJob = await prisma.job.findFirstOrThrow({ where: { workflowId: workflow.id, jobType: JobType.GENERATE_DRAFT }, orderBy: { createdAt: "desc" } });
   await processUntilSettled(generateJob.id);
@@ -172,18 +176,15 @@ async function runPipeline(params: { userId: string; title: string; transcriptCo
   expect(workflowAfter.currentState).toBe(WorkflowState.DRAFT_PENDING_REVIEW);
 
   const draft = await prisma.draft.findFirstOrThrow({ where: { workflowId: workflow.id }, orderBy: { version: "desc" } });
-  const precheck = await prisma.draftPrecheck.findFirstOrThrow({ where: { workflowId: workflow.id } });
 
-  return { workflowId: workflow.id, draft, precheck };
-}
-
-function actionsChecklistItem(checklist: unknown): { item: string; status: string; detail: string } | undefined {
-  return (checklist as Array<{ item: string; status: string; detail: string }>).find((entry) => entry.item === "Acties en vervolgstappen");
+  return { workflowId: workflow.id, workflow: workflowAfter, draft };
 }
 
 // Requires a real Postgres database -- see docs/phase-1/README.md.
-describe("DraftGenerator/DraftQualityPrecheck actions consistency (real job queue, mocked LLM)", () => {
+describe("Report type catalog stays exactly {thematic, qa} regardless of actionsPresent", () => {
   let userId: string;
+  let server: Server;
+  let baseUrl: string;
   const workflowIds: string[] = [];
 
   beforeAll(async () => {
@@ -201,17 +202,13 @@ describe("DraftGenerator/DraftQualityPrecheck actions consistency (real job queu
       }),
     );
 
-    // Deliberately the real "thematic" catalog key, not a fabricated
-    // actions-specific variant -- "Acties en vervolgstappen" is an optional
-    // section of both real report types (thematic/qa), never its own report
-    // type. Idempotent (update: {}) so this never clobbers the real seeded
-    // row, matching every sibling real-Postgres test's pattern (e.g.
-    // tests/api/reportType.routes.test.ts).
+    // Idempotent -- reasserts the two real catalog rows without ever
+    // fabricating a third one, matching every sibling real-Postgres test.
     await prisma.reportTypePolicy.upsert({
-      where: { key: REPORT_TYPE_KEY },
+      where: { key: "thematic" },
       update: {},
       create: {
-        key: REPORT_TYPE_KEY,
+        key: "thematic",
         displayName: "Thematisch gespreksverslag",
         language: "nl",
         promptVersion: "v1",
@@ -221,14 +218,34 @@ describe("DraftGenerator/DraftQualityPrecheck actions consistency (real job queu
         bodyContentRule: { type: "topic_sections", minCount: 1 },
       },
     });
+    await prisma.reportTypePolicy.upsert({
+      where: { key: "qa" },
+      update: {},
+      create: {
+        key: "qa",
+        displayName: "Vraag & antwoord gespreksverslag",
+        language: "nl",
+        promptVersion: "v1",
+        promptRef: "qa.md",
+        requiredSections: ["Samenvatting"],
+        optionalSections: ["Acties en vervolgstappen"],
+        bodyContentRule: { type: "qa_pairs", minCount: 1 },
+      },
+    });
 
     const user = await prisma.user.create({
-      data: { name: "Actions Consistency Test User", email: `actions-consistency-test-${randomUUID()}@example.com`, role: "reviewer" },
+      data: { name: "Report Type Catalog Regression User", email: `report-type-catalog-regression-${randomUUID()}@example.com`, role: "reviewer" },
     });
     userId = user.id;
+
+    server = createApp().listen(0);
+    await new Promise<void>((resolve) => server.once("listening", () => resolve()));
+    const address = server.address() as AddressInfo;
+    baseUrl = `http://127.0.0.1:${address.port}`;
   });
 
   afterAll(async () => {
+    await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
     await prisma.stateTransition.deleteMany({ where: { OR: [{ actorId: userId }, { workflowId: { in: workflowIds } }] } });
     await prisma.approvalRequest.deleteMany({ where: { workflowId: { in: workflowIds } } });
     await prisma.job.updateMany({ where: { workflowId: { in: workflowIds } }, data: { resultAiOutputId: null, retryOfAiOutputId: null } });
@@ -250,68 +267,90 @@ describe("DraftGenerator/DraftQualityPrecheck actions consistency (real job queu
     }
   });
 
-  it("scenario A: no actions in the source -- precheck says 'geen concrete acties' and the draft has no actions section", async () => {
-    const { workflowId, draft, precheck } = await runPipeline({
+  // Requirement A
+  it("A: GET /report-type-policies returns exactly the two real report types, never a third", async () => {
+    const response = await fetch(`${baseUrl}/report-type-policies`);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Array<{ key: string; displayName: string }>;
+
+    expect(body).toHaveLength(2);
+    expect(body.map((policy) => policy.key).sort()).toEqual(CANONICAL_KEYS);
+    expect(body.map((policy) => policy.displayName).sort()).toEqual(
+      ["Thematisch gespreksverslag", "Vraag & antwoord gespreksverslag"].sort(),
+    );
+    // Guards specifically against the leaked variant reappearing.
+    expect(body.some((policy) => policy.displayName.includes("met acties"))).toBe(false);
+  });
+
+  // Requirement B
+  it("B: ReportTypeAdvisor's structured-output schema can only ever return thematic or qa, using the real active catalog", async () => {
+    const policies = await findActivePolicies();
+    expect(policies.map((p) => p.key).sort()).toEqual(CANONICAL_KEYS);
+
+    const envelope = await reportTypeAdvisor.run("Vraag: wat is de voortgang? Antwoord: op schema.", {
+      policies: policies.map((p) => ({ key: p.key, displayName: p.displayName })),
+    });
+
+    expect(["thematic", "qa"]).toContain(envelope.result.suggested_type);
+    expect(["thematic", "qa"]).toContain(envelope.result.runner_up);
+  });
+
+  // Requirements D/E/F/G: both report types, with and without actionsPresent,
+  // are all individually valid and never produce a third report type.
+  it.each([
+    { label: "D: thematic + actionsPresent=false", reportType: "thematic", hasActions: false },
+    { label: "E: thematic + actionsPresent=true", reportType: "thematic", hasActions: true },
+    { label: "F: qa + actionsPresent=false", reportType: "qa", hasActions: false },
+    { label: "G: qa + actionsPresent=true", reportType: "qa", hasActions: true },
+  ])("$label", async ({ reportType, hasActions }) => {
+    const transcriptContent = hasActions
+      ? `Kort overleg over de voortgang. ${ACTIONS_MARKER}`
+      : "Kort overleg over de voortgang, verder niets afgesproken.";
+
+    const { workflowId, workflow, draft } = await runPipeline({
       userId,
-      title: "Actions Consistency - No Actions",
-      transcriptContent: "We bespraken de voortgang van het project. Alles verliep zoals gepland, geen bijzonderheden.",
+      title: `Catalog Regression - ${reportType} - actions:${hasActions}`,
+      transcriptContent,
+      reportType,
     });
     workflowIds.push(workflowId);
 
-    expect(draft.actionsPresent).toBe(false);
+    // The report type is exactly what was selected -- never a variant.
+    expect(workflow.reportType).toBe(reportType);
+    expect(draft.reportType).toBe(reportType);
+    expect(draft.actionsPresent).toBe(hasActions);
+
     const sections = draft.sections as unknown as Array<{ heading: string }>;
-    expect(sections.some((section) => section.heading === "Acties en vervolgstappen")).toBe(false);
-
-    const checklist = precheck.checklist as unknown;
-    expect(actionsChecklistItem(checklist)).toEqual({
-      item: "Acties en vervolgstappen",
-      status: "info",
-      detail: "Geen concrete acties of vervolgstappen gevonden in het transcript.",
-    });
+    expect(sections.some((section) => section.heading === "Acties en vervolgstappen")).toBe(hasActions);
   });
 
-  it("scenario B: a concrete action in the source -- precheck says 'ok' and the draft contains the same action", async () => {
-    const { workflowId, draft, precheck } = await runPipeline({
-      userId,
-      title: "Actions Consistency - Has Action",
-      transcriptContent: `We bespraken de voortgang van het project. ${ACTIONS_MARKER}`,
-    });
-    workflowIds.push(workflowId);
-
-    expect(draft.actionsPresent).toBe(true);
-    const sections = draft.sections as unknown as Array<{ heading: string; content: string }>;
-    const actionsSection = sections.find((section) => section.heading === "Acties en vervolgstappen");
-    expect(actionsSection?.content).toContain("Jan stuurt het verslag na afloop rond");
-
-    const checklist = precheck.checklist as unknown;
-    expect(actionsChecklistItem(checklist)?.status).toBe("ok");
+  // Requirement H
+  it("H: none of the above scenarios ever create a third report type in the catalog", async () => {
+    await assertExactlyTwoCanonicalPolicies();
   });
 
-  // The consistency requirement itself, stated directly rather than just
-  // implied by the two scenarios above: whatever DraftGenerator decided is
-  // exactly what DraftQualityPrecheck reports, for both possible answers.
-  it("scenario G: the precheck's actions conclusion always matches draft.actionsPresent, never its own independent judgment", async () => {
+  // Requirement I
+  it("I: actionsPresent has no influence on which report type is stored -- same type, both actionsPresent values, both selectable", async () => {
     const noActions = await runPipeline({
       userId,
-      title: "Actions Consistency - G No Actions",
+      title: "Catalog Regression - I - thematic no actions",
       transcriptContent: "Alleen een informatief overleg, verder niets afgesproken.",
+      reportType: "thematic",
     });
     workflowIds.push(noActions.workflowId);
     const hasActions = await runPipeline({
       userId,
-      title: "Actions Consistency - G Has Action",
+      title: "Catalog Regression - I - thematic with actions",
       transcriptContent: `Kort overleg. ${ACTIONS_MARKER}`,
+      reportType: "thematic",
     });
     workflowIds.push(hasActions.workflowId);
 
-    const noActionsItem = actionsChecklistItem(noActions.precheck.checklist as unknown);
-    const hasActionsItem = actionsChecklistItem(hasActions.precheck.checklist as unknown);
-
+    expect(noActions.draft.reportType).toBe("thematic");
+    expect(hasActions.draft.reportType).toBe("thematic");
     expect(noActions.draft.actionsPresent).toBe(false);
-    expect(noActionsItem?.status).not.toBe("ok");
-    expect(noActionsItem?.status).toBe("info");
-
     expect(hasActions.draft.actionsPresent).toBe(true);
-    expect(hasActionsItem?.status).toBe("ok");
+
+    await assertExactlyTwoCanonicalPolicies();
   });
 });
