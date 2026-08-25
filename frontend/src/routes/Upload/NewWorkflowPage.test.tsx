@@ -30,7 +30,7 @@ describe("routes/Upload/NewWorkflowPage", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Vul de naam of het onderwerp van de vergadering in. Vervolgens upload je het transcript en eventueel aanvullende notities.",
+        "Vul de naam of het onderwerp van de vergadering in. Vervolgens geef je eventueel aanvullende context mee en upload je het transcript.",
       ),
     ).toBeInTheDocument();
   });

@@ -45,6 +45,36 @@ describe("components/BackOrCancel", () => {
     expect(cancelWorkflowMock).not.toHaveBeenCalled();
   });
 
+  it("mode=back-to-context calls backToContext and reports the updated workflow", async () => {
+    const backToContextMock = vi.spyOn(client, "backToContext").mockResolvedValue(workflow({ currentState: "CONTEXT_INPUT" }));
+    const onUpdated = vi.fn();
+
+    render(
+      <MemoryRouter>
+        <BackOrCancel mode="back-to-context" workflowId="w1" currentUserId="u1" onUpdated={onUpdated} />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Terug naar aanvullende context" }));
+
+    await waitFor(() => expect(backToContextMock).toHaveBeenCalledWith("w1", { actorId: "u1" }));
+    expect(onUpdated).toHaveBeenCalledWith(expect.objectContaining({ currentState: "CONTEXT_INPUT" }));
+  });
+
+  it("mode=back-to-context shows a translated error if it fails", async () => {
+    vi.spyOn(client, "backToContext").mockRejectedValue(new Error("network down"));
+
+    render(
+      <MemoryRouter>
+        <BackOrCancel mode="back-to-context" workflowId="w1" currentUserId="u1" onUpdated={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Terug naar aanvullende context" }));
+
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Er is een fout opgetreden."));
+  });
+
   it("mode=cancel requires an explicit confirmation before calling cancelWorkflow", async () => {
     const cancelWorkflowMock = vi.spyOn(client, "cancelWorkflow").mockResolvedValue(workflow());
     const onCancelled = vi.fn();

@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { cancelWorkflow, type Workflow } from "../api-client/client";
+import { backToContext, cancelWorkflow, type Workflow } from "../api-client/client";
 import { translateError } from "../api-client/translateError";
 
 type BackOrCancelProps =
   | { mode: "back" }
+  | { mode: "back-to-context"; workflowId: string; currentUserId: string; onUpdated: (workflow: Workflow) => void }
   | { mode: "cancel"; workflowId: string; currentUserId: string; onCancelled: (workflow: Workflow) => void };
 
 // Shared "vorige stap"/"annuleren" control (Phase 11 feedback item 2).
@@ -15,8 +16,12 @@ type BackOrCancelProps =
 // step back. Rather than label that as "terug" (which it isn't), this
 // component is honest about which behavior applies:
 //   - mode="back": a real, local, no-backend-call navigation. Used only on
-//     the very first data-entry screen, where there is genuinely nothing to
-//     lose yet.
+//     the very first data-entry screen (ContextStepScreen, since Phase 19),
+//     where there is genuinely nothing to lose yet.
+//   - mode="back-to-context": the Phase 19 `back_to_context` FSM edge (only
+//     valid from CREATED) -- a genuine state transition, not a local
+//     navigate(), so a page refresh on the transcript screen still shows the
+//     right screen. Already-submitted context/notes are untouched by it.
 //   - mode="cancel": the existing `cancel` FSM action, clearly labeled as
 //     ending the workflow, with an inline confirmation step instead of a
 //     blocking window.confirm dialog.
@@ -31,7 +36,51 @@ export function BackOrCancel(props: BackOrCancelProps) {
     );
   }
 
+  if (props.mode === "back-to-context") {
+    return (
+      <BackToContextControl
+        workflowId={props.workflowId}
+        currentUserId={props.currentUserId}
+        onUpdated={props.onUpdated}
+      />
+    );
+  }
+
   return <CancelControl workflowId={props.workflowId} currentUserId={props.currentUserId} onCancelled={props.onCancelled} />;
+}
+
+function BackToContextControl({
+  workflowId,
+  currentUserId,
+  onUpdated,
+}: {
+  workflowId: string;
+  currentUserId: string;
+  onUpdated: (workflow: Workflow) => void;
+}) {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleClick() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const updated = await backToContext(workflowId, { actorId: currentUserId });
+      onUpdated(updated);
+    } catch (err) {
+      setError(translateError(err));
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div>
+      <button type="button" className="button-secondary" onClick={handleClick} disabled={submitting}>
+        Terug naar aanvullende context
+      </button>
+      {error && <p role="alert">{error}</p>}
+    </div>
+  );
 }
 
 function CancelControl({

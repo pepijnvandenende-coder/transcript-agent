@@ -28,6 +28,31 @@ const MAX_TOKENS = 8000;
 // judgment.
 export const DATE_NOT_RECORDED = "Niet vastgelegd";
 
+// Single source of truth for the "Acties en vervolgstappen" heading string --
+// draftQualityPrecheck.ts and draftReviser.ts both import this rather than
+// each keeping their own copy, so the three can never drift apart on what
+// heading they're matching.
+export const ACTIONS_SECTION_HEADING = "Acties en vervolgstappen";
+
+// Appended to the report type's own prompt file (same pattern
+// draftReviser.ts uses for REVISION_INSTRUCTIONS) rather than edited into
+// ai/prompts/reportTypes/{thematic,qa}.md themselves -- this is the one
+// analysis those Dutch prompt files leave implicit ("indien van toepassing")
+// and that draftQualityPrecheck.ts used to re-derive independently, causing
+// the two to disagree. Made explicit and binding here instead: the model
+// must answer this exact question once, and `actions_present` is enforced
+// deterministically below rather than trusted to make the model's prose
+// agree with its own boolean.
+export const ACTIONS_PRESENCE_INSTRUCTIONS = `
+Bepaal daarnaast expliciet: staan er in de bron (transcript en/of aantekeningen) daadwerkelijk concrete acties, toezeggingen of vervolgstappen die zijn afgesproken (bijvoorbeeld "Jan stuurt het document na" of "we plannen een vervolgafspraak")?
+
+Een algemeen besproken onderwerp, een losse suggestie of een mogelijke vervolgstap ("we kunnen hier later nog naar kijken") is GEEN concrete actie, tenzij de bron duidelijk maakt dat dit daadwerkelijk als vervolgstap is afgesproken. Twijfel je of iets een concrete, afgesproken actie is, beschouw het dan niet als actie.
+
+Zet deze beoordeling in het veld "actions_present" (boolean). Dit veld is bindend voor de sectie "Acties en vervolgstappen (indien van toepassing)" in "sections":
+- "actions_present": false -- laat deze sectie volledig weg uit "sections" (geen kop, geen tabel, geen inhoud). Verzin nooit een actie.
+- "actions_present": true -- neem de sectie wél op, met de tabel "| Actie | Verantwoordelijke | Deadline | Status |", gevuld met uitsluitend de daadwerkelijk uit de bron gebleken acties. Vul Verantwoordelijke, Deadline en Status uitsluitend in wanneer dit expliciet uit de bron blijkt; laat de cel anders leeg (verzin nooit een verantwoordelijke, deadline of status).
+`.trim();
+
 // title/attendees/sections/conversation_date are asked of the model;
 // report_type and subject are known facts from the workflow/policy, not
 // something an LLM should be reconstructing (matches the "no invented
@@ -58,8 +83,13 @@ const OUTPUT_SCHEMA = {
         additionalProperties: false,
       },
     },
+    actions_present: {
+      type: "boolean",
+      description:
+        "Of de brontekst daadwerkelijk concrete, afgesproken acties/vervolgstappen bevat -- zie de aparte instructie hierboven. Bindend voor of 'Acties en vervolgstappen' in sections voorkomt.",
+    },
   },
-  required: ["title", "attendees", "conversation_date", "sections"],
+  required: ["title", "attendees", "conversation_date", "sections", "actions_present"],
   additionalProperties: false,
 } as const;
 
@@ -68,6 +98,7 @@ interface DraftGeneratorLlmOutput {
   attendees: string[];
   conversation_date: string | null;
   sections: Array<{ heading: string; content: string }>;
+  actions_present: boolean;
 }
 
 export async function run(params: {
@@ -75,9 +106,23 @@ export async function run(params: {
   policyKey: string;
   promptRef: string;
   subject: string;
+  // Phase 18: the explicit context step's active context_items (PvA,
+  // normenkader, vragenlijst, ...), kept as a separate labeled block rather
+  // than folded into `mergedContent` -- Merger's transcript/notes
+  // reconciliation (and ConflictDetector after it) is deliberately untouched
+  // by this change, so this reference material never participates in
+  // conflict detection, only in drafting the report itself.
+  additionalContext?: Array<{ label: string; content: string }>;
 }): Promise<DraftGeneratorEnvelope> {
-  const { mergedContent, policyKey, promptRef, subject } = params;
-  const systemPrompt = loadReportTypePrompt(promptRef);
+  const { mergedContent, policyKey, promptRef, subject, additionalContext = [] } = params;
+  const systemPrompt = `${loadReportTypePrompt(promptRef)}\n\n${ACTIONS_PRESENCE_INSTRUCTIONS}`;
+
+  const contextBlock =
+    additionalContext.length > 0
+      ? `\n\nAanvullende context (ter referentie, geen letterlijke bron voor citaten):\n\n${additionalContext
+          .map((item) => `### ${item.label}\n\n${item.content}`)
+          .join("\n\n")}`
+      : "";
 
   const client = getAnthropicClient();
   const response = await client.messages.create({
@@ -88,7 +133,7 @@ export async function run(params: {
     messages: [
       {
         role: "user",
-        content: `Onderwerp: ${subject}\n\nBron (transcript en, indien aanwezig, eigen notities, al samengevoegd):\n\n${mergedContent}`,
+        content: `Onderwerp: ${subject}\n\nBron (transcript en, indien aanwezig, eigen notities, al samengevoegd):\n\n${mergedContent}${contextBlock}`,
       },
     ],
   });
@@ -97,9 +142,21 @@ export async function run(params: {
   const parsed: DraftGeneratorLlmOutput =
     textBlock && textBlock.type === "text"
       ? JSON.parse(textBlock.text)
-      : { title: subject, attendees: [], conversation_date: null, sections: [] };
+      : { title: subject, attendees: [], conversation_date: null, sections: [], actions_present: false };
 
   const date = parsed.conversation_date && parsed.conversation_date.trim().length > 0 ? parsed.conversation_date.trim() : DATE_NOT_RECORDED;
+
+  // Deterministic enforcement, not just a prompt instruction: even if the
+  // model's own "actions_present" boolean and its "sections" content
+  // disagree with each other, a false "actions_present" always wins -- the
+  // section can never survive into the persisted draft when the model itself
+  // judged the source has no concrete actions. (The reverse -- forcing the
+  // section to appear when actions_present is true -- is deliberately NOT
+  // done: that would mean fabricating action content, which is exactly what
+  // this is meant to prevent.)
+  const sections = parsed.sections.filter(
+    (section) => parsed.actions_present || section.heading !== ACTIONS_SECTION_HEADING,
+  );
 
   return {
     skill: SKILL_NAME,
@@ -117,8 +174,9 @@ export async function run(params: {
       attendees: parsed.attendees,
       date,
       subject,
-      sections: parsed.sections.map((section) => ({ ...section, content: normalizeSectionContent(section.content) })),
+      sections: sections.map((section) => ({ ...section, content: normalizeSectionContent(section.content) })),
       coverage: mergedContent.trim().length > 0 ? 1 : 0,
+      actions_present: parsed.actions_present,
     },
   };
 }

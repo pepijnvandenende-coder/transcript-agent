@@ -22,6 +22,29 @@ function parseTableRow(line: string): string[] {
     .map((cell) => cell.trim());
 }
 
+// Used only for "Openstaande vragen / onduidelijkheden" (see
+// backend/src/ai/prompts/reportTypes/{thematic,qa}.md and DraftReviewScreen.tsx),
+// where the model writes one block per question -- a label line ("Vraag 1:")
+// plus its duiding -- separated from the next block by a blank line. Unlike
+// parseContentBlocks() above, the blank line is meaningful here (the
+// boundary between two questions), not noise to be dropped: each returned
+// string is one block, its internal lines still newline-joined so a caller
+// can render them as a soft break within one paragraph rather than a full
+// paragraph gap. Mirrors backend/src/rendering/parseContentBlocks.ts's
+// parseOpenQuestionBlocks() -- see that file's doc comment on duplication.
+export function parseOpenQuestionBlocks(content: string): string[] {
+  return content
+    .split(/\n\s*\n/)
+    .map((group) =>
+      group
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0)
+        .join("\n"),
+    )
+    .filter((group) => group.length > 0);
+}
+
 export function parseContentBlocks(content: string): ContentBlock[] {
   const lines = content
     .split("\n")

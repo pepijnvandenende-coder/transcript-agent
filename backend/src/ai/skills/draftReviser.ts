@@ -2,6 +2,7 @@ import type { DraftReviserEnvelope, DraftSection } from "../skillEnvelope";
 import { getAnthropicClient } from "../anthropicClient";
 import { normalizeSectionContent } from "../normalizeSectionContent";
 import { loadReportTypePrompt } from "../prompts/reportTypeLoader";
+import { ACTIONS_PRESENCE_INSTRUCTIONS, ACTIONS_SECTION_HEADING } from "./draftGenerator";
 
 // Phase 16: replaces the Phase 8 deterministic stub (which only ever
 // appended feedback verbatim onto a hardcoded "Notulen" heading) with a real
@@ -39,6 +40,8 @@ Behoud alleen informatie die na de wijziging nog relevant is. Doe nooit alsof ee
 Vul in een actietabel nooit een deadline in tenzij deze letterlijk in de brontekst of aantekeningen wordt genoemd. Is er geen deadline genoemd, laat de deadline-cel dan leeg.
 
 Meld voor elk feedbackpunt in "changes_applied" wat je concreet hebt aangepast. Als een feedbackpunt niet kon worden verwerkt (bijvoorbeeld omdat het naar iets verwijst dat niet in het verslag voorkomt), zet dat feedbackpunt dan in "unresolved_feedback" in plaats van te doen alsof het is verwerkt.
+
+Herbeoordeel "actions_present" hieronder opnieuw op basis van de brontekst (niet op basis van wat de vorige conceptversie toevallig al bevatte). Vraagt de feedback expliciet om de sectie "Acties en vervolgstappen" toe te voegen of te verwijderen, volg die feedback net als bij ieder ander onderdeel -- maar verzin nooit een actie die niet daadwerkelijk uit de bron blijkt.
 `.trim();
 
 const OUTPUT_SCHEMA = {
@@ -58,8 +61,13 @@ const OUTPUT_SCHEMA = {
     },
     changes_applied: { type: "array", items: { type: "string" } },
     unresolved_feedback: { type: "array", items: { type: "string" } },
+    actions_present: {
+      type: "boolean",
+      description:
+        "Of de brontekst daadwerkelijk concrete, afgesproken acties/vervolgstappen bevat -- zie de aparte instructie hierboven. Bindend voor of 'Acties en vervolgstappen' in sections voorkomt.",
+    },
   },
-  required: ["sections", "changes_applied", "unresolved_feedback"],
+  required: ["sections", "changes_applied", "unresolved_feedback", "actions_present"],
   additionalProperties: false,
 } as const;
 
@@ -67,6 +75,7 @@ interface DraftReviserLlmOutput {
   sections: Array<{ heading: string; content: string }>;
   changes_applied: string[];
   unresolved_feedback: string[];
+  actions_present: boolean;
 }
 
 function formatCurrentDraft(sections: DraftSection[]): string {
@@ -85,7 +94,7 @@ export async function run(params: {
   feedbackItems: string[];
 }): Promise<DraftReviserEnvelope> {
   const { mergedContent, promptRef, subject, previousSections, feedbackItems } = params;
-  const systemPrompt = `${loadReportTypePrompt(promptRef)}\n\n${REVISION_INSTRUCTIONS}`;
+  const systemPrompt = `${loadReportTypePrompt(promptRef)}\n\n${ACTIONS_PRESENCE_INSTRUCTIONS}\n\n${REVISION_INSTRUCTIONS}`;
 
   const client = getAnthropicClient();
   const response = await client.messages.create({
@@ -105,7 +114,20 @@ export async function run(params: {
   const parsed: DraftReviserLlmOutput =
     textBlock && textBlock.type === "text"
       ? JSON.parse(textBlock.text)
-      : { sections: previousSections, changes_applied: [], unresolved_feedback: feedbackItems };
+      : {
+          sections: previousSections,
+          changes_applied: [],
+          unresolved_feedback: feedbackItems,
+          // Parse failure -- previousSections passes through unchanged, so
+          // derive actions_present from what's actually still there rather
+          // than guessing, keeping the enforcement filter below a no-op.
+          actions_present: previousSections.some((section) => section.heading === ACTIONS_SECTION_HEADING),
+        };
+
+  // Same deterministic enforcement as draftGenerator.ts -- see its comment.
+  const sections = parsed.sections.filter(
+    (section) => parsed.actions_present || section.heading !== ACTIONS_SECTION_HEADING,
+  );
 
   return {
     skill: SKILL_NAME,
@@ -117,9 +139,10 @@ export async function run(params: {
     rationale: `LLM-revised draft (${MODEL}) op basis van ${feedbackItems.length} feedbackregel(s).`,
     flags: [],
     result: {
-      sections: parsed.sections.map((section) => ({ ...section, content: normalizeSectionContent(section.content) })),
+      sections: sections.map((section) => ({ ...section, content: normalizeSectionContent(section.content) })),
       changes_applied: parsed.changes_applied,
       unresolved_feedback: parsed.unresolved_feedback,
+      actions_present: parsed.actions_present,
     },
   };
 }

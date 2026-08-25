@@ -163,6 +163,11 @@ describe("approval/reportTypeSelection", () => {
     const workflow = await engine.createWorkflow({ title, createdById: userId });
     await engine.transition({
       workflowId: workflow.id,
+      trigger: { kind: "user_action", action: "continue_to_transcript" },
+      actor: { actorType: ActorType.USER, actorId: userId },
+    });
+    await engine.transition({
+      workflowId: workflow.id,
       trigger: { kind: "user_action", action: "upload_transcript" },
       actor: { actorType: ActorType.USER, actorId: userId },
     });

@@ -95,6 +95,7 @@ function draftGeneratorEnvelope(confidence: number): DraftGeneratorEnvelope {
         { heading: "Notulen", content: "y" },
       ],
       coverage: 0.7,
+      actions_present: false,
     },
   };
 }
@@ -109,8 +110,8 @@ function draftQualityPrecheckEnvelope(confidence: number): DraftQualityPrecheckE
     result: {
       overall_score: 1,
       checklist: [
-        { item: "Samenvatting", passed: true },
-        { item: "Notulen", passed: true },
+        { item: "Samenvatting", status: "ok", detail: "Structuur voldoet aan het verslagtype." },
+        { item: "Inhoud", status: "ok", detail: "Inhoud sluit aan op het transcript." },
       ],
       blocking_issues: [],
       recommendation: "Looks complete.",
@@ -205,6 +206,11 @@ describe("Phase 7 draft & review API", () => {
     const workflow = await engine.createWorkflow({ title, createdById: userId });
     await engine.transition({
       workflowId: workflow.id,
+      trigger: { kind: "user_action", action: "continue_to_transcript" },
+      actor: { actorType: ActorType.USER, actorId: userId },
+    });
+    await engine.transition({
+      workflowId: workflow.id,
       trigger: { kind: "user_action", action: "upload_transcript" },
       actor: { actorType: ActorType.USER, actorId: userId },
     });
@@ -261,6 +267,7 @@ describe("Phase 7 draft & review API", () => {
         { heading: "Notulen", content: "y" },
       ],
       coverage: 0.7,
+      actionsPresent: false,
     });
     const { aiOutputId: precheckAiOutputId } = await handleSkillOutput({
       workflowId: workflow.id,
@@ -278,8 +285,8 @@ describe("Phase 7 draft & review API", () => {
       aiOutputId: precheckAiOutputId,
       overallScore: 1,
       checklist: [
-        { item: "Samenvatting", passed: true },
-        { item: "Notulen", passed: true },
+        { item: "Samenvatting", status: "ok", detail: "Structuur voldoet aan het verslagtype." },
+        { item: "Inhoud", status: "ok", detail: "Inhoud sluit aan op het transcript." },
       ],
       blockingIssues: [],
       recommendation: "Looks complete.",

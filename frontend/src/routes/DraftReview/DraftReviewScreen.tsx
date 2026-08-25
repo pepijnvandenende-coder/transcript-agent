@@ -1,26 +1,77 @@
 import { useEffect, useState } from "react";
-import { getDrafts, reviewDraft, type Draft, type DraftPrecheck, type Workflow } from "../../api-client/client";
+import {
+  getDrafts,
+  reviewDraft,
+  type Draft,
+  type DraftPrecheck,
+  type PrecheckStatus,
+  type Workflow,
+} from "../../api-client/client";
 import { translateError } from "../../api-client/translateError";
 import { BackOrCancel } from "../../components/BackOrCancel";
-import { parseContentBlocks } from "../../rendering/parseContentBlocks";
+import { parseContentBlocks, parseOpenQuestionBlocks } from "../../rendering/parseContentBlocks";
 
 // Phase 15 item 2: showing only the failing items (as one summarizing
 // sentence) made correct items read as "missing" whenever they happened to
-// be bundled with something that failed. The backend now always returns a
-// fixed five-item Dutch checklist (see ai/skills/draftQualityPrecheck.ts) --
-// render every item with its own pass/fail marker instead of collapsing it
-// into a single sentence. `checklist[].item` is already a presentable Dutch
-// label for both outcomes (e.g. "Datum correct overgenomen" / "Datum
-// ontbreekt"), so no separate translation is needed here.
+// be bundled with something that failed -- every item is rendered on its
+// own line instead of being collapsed into a single sentence.
+//
+// Phase 19 item 1: a bare ✓/⚠ marker couldn't distinguish "the source never
+// mentioned this, nothing to flag" from "this needs your attention", and
+// gave no reason for a warning beyond the item's fixed label. Four markers
+// now map to the backend's PrecheckStatus (see ai/skillEnvelope.ts), and
+// `detail` (always present) is shown alongside every item so a warning is
+// never just a bare word -- see draftQualityPrecheck.ts.
+const STATUS_MARKERS: Record<PrecheckStatus, string> = {
+  ok: "✓",
+  info: "ℹ",
+  warning: "⚠",
+  problem: "✕",
+};
+
 function PrecheckChecklist({ precheck }: { precheck: DraftPrecheck }) {
   return (
-    <ul>
-      {precheck.checklist.map((entry) => (
-        <li key={entry.item}>
-          {entry.passed ? "✓" : "⚠"} {entry.item}
-        </li>
+    <>
+      <ul>
+        {precheck.checklist.map((entry) => (
+          <li key={entry.item}>
+            {STATUS_MARKERS[entry.status]} {entry.item} -- {entry.detail}
+          </li>
+        ))}
+      </ul>
+      <p>{precheck.recommendation}</p>
+    </>
+  );
+}
+
+// Matches the canonical heading both report-type prompts use for this
+// section (see backend/src/ai/prompts/reportTypes/{thematic,qa}.md) --
+// backend/src/approval/reportStructureValidator.ts relies on the same
+// exact-string match, so the model is already expected to emit this heading
+// verbatim.
+const OPEN_QUESTIONS_HEADING = "Openstaande vragen / onduidelijkheden";
+
+// "Openstaande vragen / onduidelijkheden" renders one block per question
+// (label + duiding kept together, via a <br/> between their lines) with a
+// blank line's worth of gap to the next block -- not a bullet list -- so the
+// blank line the model puts between questions stays visible on screen,
+// matching parseOpenQuestionBlocks()'s doc comment and finalRenderer.ts's
+// matching .docx rendering.
+function OpenQuestionsContent({ content }: { content: string }) {
+  const blocks = parseOpenQuestionBlocks(content);
+  return (
+    <>
+      {blocks.map((block, index) => (
+        <p key={index}>
+          {block.split("\n").map((line, lineIndex) => (
+            <span key={lineIndex}>
+              {lineIndex > 0 && <br />}
+              {line}
+            </span>
+          ))}
+        </p>
       ))}
-    </ul>
+    </>
   );
 }
 
@@ -28,9 +79,13 @@ function PrecheckChecklist({ precheck }: { precheck: DraftPrecheck }) {
 // content is a markdown table -- the report prompts already ask the model
 // for one, see ai/prompts/reportTypes/{thematic,qa}.md) must render as a
 // real table, not one <p> per pipe-delimited line. Bullet lists get the same
-// treatment for the same reason (e.g. "Openstaande vragen"); anything else
-// still renders as plain paragraphs, same as before.
-function SectionContent({ content }: { content: string }) {
+// treatment for the same reason; anything else still renders as plain
+// paragraphs, same as before.
+function SectionContent({ heading, content }: { heading: string; content: string }) {
+  if (heading === OPEN_QUESTIONS_HEADING) {
+    return <OpenQuestionsContent content={content} />;
+  }
+
   const blocks = parseContentBlocks(content);
   return (
     <>
@@ -151,7 +206,7 @@ export function DraftReviewScreen({
         {draft.sections.map((section) => (
           <section key={section.heading}>
             <h3>{section.heading}</h3>
-            <SectionContent content={section.content} />
+            <SectionContent heading={section.heading} content={section.content} />
           </section>
         ))}
       </div>

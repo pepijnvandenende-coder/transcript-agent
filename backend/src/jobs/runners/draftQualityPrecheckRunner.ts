@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import * as draftQualityPrecheck from "../../ai/skills/draftQualityPrecheck";
 import { handleSkillOutput } from "../../approval/gateway";
-import { checkDraftStructure } from "../../approval/reportStructureValidator";
+import { asStringArray, checkDraftStructure } from "../../approval/reportStructureValidator";
 import { createDraftPrecheck } from "../../persistence/repositories/draftPrecheckRepository";
 import { findLatestDraft } from "../../persistence/repositories/draftRepository";
 import { findLatestMerge } from "../../persistence/repositories/mergeRepository";
@@ -50,6 +50,8 @@ export async function runDraftQualityPrecheckJob(job: JobRunnerInput): Promise<J
     sections,
     sourceText,
     structuralItems,
+    optionalSections: asStringArray(policy.optionalSections),
+    actionsPresentInSource: draft.actionsPresent,
   });
 
   const { aiOutputId } = await handleSkillOutput({

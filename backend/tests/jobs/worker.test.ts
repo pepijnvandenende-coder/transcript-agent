@@ -32,6 +32,34 @@ vi.mock("../../src/ai/anthropicClient", () => ({
         const isReportTypeClassification = "suggested_type" in properties;
         const isDraftQualityPrecheck = "factually_grounded" in properties;
         const isDraftReviser = "changes_applied" in properties;
+        const isOpenQuestions = "open_questions" in properties;
+        const isCriteriaCoverage = "items" in properties;
+        if (isOpenQuestions) {
+          return Promise.resolve({
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  open_questions: [
+                    { question: "Is de opleverdatum definitief?", explanation: "Dit wordt in het verslag genoemd maar niet bevestigd." },
+                  ],
+                }),
+              },
+            ],
+          });
+        }
+        if (isCriteriaCoverage) {
+          return Promise.resolve({
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  items: [{ criterion: "Test norm", status: "covered", explanation: "Voldoende behandeld." }],
+                }),
+              },
+            ],
+          });
+        }
         if (isReportTypeClassification) {
           return Promise.resolve({
             content: [
@@ -48,11 +76,10 @@ vi.mock("../../src/ai/anthropicClient", () => ({
               {
                 type: "text",
                 text: JSON.stringify({
-                  attendees_correct: true,
-                  date_correct: true,
-                  subject_correct: true,
-                  factually_grounded: true,
-                  issues: [],
+                  attendees: { correct: true, reason: "" },
+                  date: { correct: true, reason: "" },
+                  subject: { correct: true, reason: "" },
+                  factually_grounded: { grounded: true, reason: "" },
                 }),
               },
             ],
@@ -73,6 +100,7 @@ vi.mock("../../src/ai/anthropicClient", () => ({
                   ],
                   changes_applied: [feedbackText],
                   unresolved_feedback: [],
+                  actions_present: false,
                 }),
               },
             ],
@@ -90,6 +118,7 @@ vi.mock("../../src/ai/anthropicClient", () => ({
                   { heading: "Samenvatting", content: "Kernpunten van het gesprek." },
                   { heading: "Notulen", content: "Gedetailleerde weergave van het gesprek." },
                 ],
+                actions_present: false,
               }),
             },
           ],
@@ -188,6 +217,11 @@ describe("jobs: queue + processNextJob (no daemon required)", () => {
       update: { policyType: PolicyType.AUTO, confidenceThreshold: null },
       create: { skillName: FINAL_RENDERER_SKILL_NAME, policyType: PolicyType.AUTO },
     });
+    await prisma.approvalPolicy.upsert({
+      where: { skillName: "PostProcessing" },
+      update: { policyType: PolicyType.AUTO, confidenceThreshold: null },
+      create: { skillName: "PostProcessing", policyType: PolicyType.AUTO },
+    });
     await prisma.reportTypePolicy.upsert({
       where: { key: "thematic" },
       update: {},
@@ -226,6 +260,11 @@ describe("jobs: queue + processNextJob (no daemon required)", () => {
     workflowId = workflow.id;
     await engine.transition({
       workflowId,
+      trigger: { kind: "user_action", action: "continue_to_transcript" },
+      actor: { actorType: ActorType.USER, actorId: userId },
+    });
+    await engine.transition({
+      workflowId,
       trigger: { kind: "user_action", action: "upload_transcript" },
       actor: { actorType: ActorType.USER, actorId: userId },
     });
@@ -244,6 +283,7 @@ describe("jobs: queue + processNextJob (no daemon required)", () => {
     await prisma.stateTransition.deleteMany({ where: { OR: [{ actorId: userId }, { workflowId }] } });
     await prisma.approvalRequest.deleteMany({ where: { workflowId } });
     await prisma.job.updateMany({ where: { workflowId }, data: { resultAiOutputId: null, retryOfAiOutputId: null } });
+    await prisma.postProcessingResult.deleteMany({ where: { workflowId } });
     await prisma.merge.deleteMany({ where: { workflowId } });
     await prisma.aiOutputInput.deleteMany({ where: { aiOutput: { workflowId } } });
     await prisma.conflict.deleteMany({ where: { workflowId } });
@@ -465,12 +505,11 @@ describe("jobs: queue + processNextJob (no daemon required)", () => {
     expect(workflow.currentState).toBe(WorkflowState.DRAFT_PENDING_REVIEW);
   });
 
-  it("approveDraft auto-enqueued a RENDER_FINAL job, which processNextJob also completes, reaching COMPLETED with a final report", async () => {
+  it("approveDraft auto-enqueued a RENDER_FINAL job, which processNextJob also completes, reaching POST_PROCESSING with a final report", async () => {
     // The real flow: approval/draftReview.ts's approveDraft() finalizes the
     // draft's ai_output and (via enqueueForStateEntry) auto-starts
     // FinalRenderer's job the same way every other PROCESSING-state entry
-    // does. This is the last skill in the pipeline -- the workflow reaches
-    // its terminal state here.
+    // does.
     const draft = await prisma.draft.findFirstOrThrow({ where: { workflowId }, orderBy: { version: "desc" } });
 
     const updated = await approveDraft({ workflowId, actorId: userId, version: draft.version });
@@ -488,8 +527,10 @@ describe("jobs: queue + processNextJob (no daemon required)", () => {
     expect(completed.resultAiOutputId).not.toBeNull();
 
     const workflow = await prisma.workflow.findUniqueOrThrow({ where: { id: workflowId } });
-    expect(workflow.currentState).toBe(WorkflowState.COMPLETED);
-    expect(workflow.status).toBe("COMPLETED");
+    // Phase 18: POST_PROCESSING, not COMPLETED directly -- see
+    // workflow/transitions.ts. Not terminal, so workflow.status stays ACTIVE.
+    expect(workflow.currentState).toBe(WorkflowState.POST_PROCESSING);
+    expect(workflow.status).toBe("ACTIVE");
 
     const finalReport = await prisma.finalReport.findUniqueOrThrow({ where: { workflowId } });
     expect(finalReport.draftId).toBe(draft.id);
@@ -503,6 +544,32 @@ describe("jobs: queue + processNextJob (no daemon required)", () => {
     expect(Array.from(content.subarray(0, 4))).toEqual([0x50, 0x4b, 0x03, 0x04]);
   });
 
+  it("entering POST_PROCESSING auto-enqueued a RUN_POST_PROCESSING job, which processNextJob also completes, reaching COMPLETED", async () => {
+    // Continues from the previous test: entering POST_PROCESSING
+    // auto-enqueued this job via the same enqueueForStateEntry mechanism.
+    // This is the last step in the pipeline -- the workflow reaches its
+    // terminal state here. Whichever post_processing_skill_policies rows are
+    // active is environment-dependent (shared DB across concurrently-running
+    // test files), so this only asserts the orchestrator itself always
+    // completes and always reaches COMPLETED -- tests/jobs/postProcessingRunner.test.ts
+    // covers the per-skill success/failure/skip semantics with its own
+    // dedicated, explicitly-seeded catalog rows.
+    const queuedPostProcessing = await prisma.job.findFirstOrThrow({
+      where: { workflowId, jobType: JobType.RUN_POST_PROCESSING },
+      orderBy: { createdAt: "desc" },
+    });
+
+    await processUntilSettled(queuedPostProcessing.id);
+
+    const completed = await prisma.job.findUniqueOrThrow({ where: { id: queuedPostProcessing.id } });
+    expect(completed.status).toBe(JobStatus.SUCCEEDED);
+    expect(completed.resultAiOutputId).not.toBeNull();
+
+    const workflow = await prisma.workflow.findUniqueOrThrow({ where: { id: workflowId } });
+    expect(workflow.currentState).toBe(WorkflowState.COMPLETED);
+    expect(workflow.status).toBe("COMPLETED");
+  });
+
   it("retry lineage flows from a manually-enqueued retry job through to the resulting ai_outputs row", async () => {
     // Uses its own workflow rather than the shared one above, since this
     // exercises VALIDATE_TRANSCRIPT from a fresh VALIDATING_TRANSCRIPT state.
@@ -510,6 +577,11 @@ describe("jobs: queue + processNextJob (no daemon required)", () => {
       data: { name: "Retry Lineage User", email: `retry-lineage-${randomUUID()}@example.com`, role: "reviewer" },
     });
     const workflow = await engine.createWorkflow({ title: "Retry Lineage Workflow", createdById: retryUser.id });
+    await engine.transition({
+      workflowId: workflow.id,
+      trigger: { kind: "user_action", action: "continue_to_transcript" },
+      actor: { actorType: ActorType.USER, actorId: retryUser.id },
+    });
     await engine.transition({
       workflowId: workflow.id,
       trigger: { kind: "user_action", action: "upload_transcript" },
@@ -600,6 +672,11 @@ describe("jobs: queue + processNextJob (no daemon required)", () => {
       data: { name: "No Notes User", email: `no-notes-${randomUUID()}@example.com`, role: "reviewer" },
     });
     const workflow = await engine.createWorkflow({ title: "No Notes Workflow", createdById: noNotesUser.id });
+    await engine.transition({
+      workflowId: workflow.id,
+      trigger: { kind: "user_action", action: "continue_to_transcript" },
+      actor: { actorType: ActorType.USER, actorId: noNotesUser.id },
+    });
     await engine.transition({
       workflowId: workflow.id,
       trigger: { kind: "user_action", action: "upload_transcript" },

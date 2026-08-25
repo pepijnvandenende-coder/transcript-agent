@@ -9,6 +9,7 @@ import type {
   DraftQualityPrecheckEnvelope,
   FinalRendererEnvelope,
   MergerEnvelope,
+  PostProcessingEnvelope,
   ReportTypeAdvisorEnvelope,
   TranscriptQualityEnvelope,
 } from "../../src/ai/skillEnvelope";
@@ -99,6 +100,7 @@ function draftGeneratorEnvelope(confidence: number): DraftGeneratorEnvelope {
         { heading: "Notulen", content: "y" },
       ],
       coverage: 0.7,
+      actions_present: false,
     },
   };
 }
@@ -113,8 +115,8 @@ function draftQualityPrecheckEnvelope(confidence: number): DraftQualityPrecheckE
     result: {
       overall_score: 1,
       checklist: [
-        { item: "Samenvatting", passed: true },
-        { item: "Notulen", passed: true },
+        { item: "Samenvatting", status: "ok", detail: "Structuur voldoet aan het verslagtype." },
+        { item: "Inhoud", status: "ok", detail: "Inhoud sluit aan op het transcript." },
       ],
       blocking_issues: [],
       recommendation: "Looks complete.",
@@ -130,6 +132,21 @@ function finalRendererEnvelope(confidence: number): FinalRendererEnvelope {
     rationale: "test envelope",
     flags: [],
     result: { rendered: true },
+  };
+}
+
+// Phase 18: drives POST_PROCESSING -> COMPLETED the same way this file
+// drives every earlier step, bypassing the job queue/postProcessingRunner.ts
+// -- no post_processing_skill_policies rows are seeded in this file, so
+// `executed` is empty, mirroring a workflow with no active follow-up skills.
+function postProcessingEnvelope(): PostProcessingEnvelope {
+  return {
+    skill: "PostProcessing",
+    schema_version: "1.0.0",
+    confidence: 1,
+    rationale: "test envelope",
+    flags: [],
+    result: { executed: [] },
   };
 }
 
@@ -173,6 +190,11 @@ describe("Phase 9 final-report API", () => {
       where: { skillName: FINAL_RENDERER_SKILL_NAME },
       update: { policyType: PolicyType.AUTO, confidenceThreshold: null },
       create: { skillName: FINAL_RENDERER_SKILL_NAME, policyType: PolicyType.AUTO },
+    });
+    await prisma.approvalPolicy.upsert({
+      where: { skillName: "PostProcessing" },
+      update: { policyType: PolicyType.AUTO, confidenceThreshold: null },
+      create: { skillName: "PostProcessing", policyType: PolicyType.AUTO },
     });
     await prisma.reportTypePolicy.upsert({
       where: { key: "thematic" },
@@ -224,6 +246,11 @@ describe("Phase 9 final-report API", () => {
 
   async function workflowAtCompleted(title: string) {
     const workflow = await engine.createWorkflow({ title, createdById: userId });
+    await engine.transition({
+      workflowId: workflow.id,
+      trigger: { kind: "user_action", action: "continue_to_transcript" },
+      actor: { actorType: ActorType.USER, actorId: userId },
+    });
     await engine.transition({
       workflowId: workflow.id,
       trigger: { kind: "user_action", action: "upload_transcript" },
@@ -282,6 +309,7 @@ describe("Phase 9 final-report API", () => {
         { heading: "Notulen", content: "y" },
       ],
       coverage: 0.7,
+      actionsPresent: false,
     });
     await handleSkillOutput({
       workflowId: workflow.id,
@@ -312,6 +340,15 @@ describe("Phase 9 final-report API", () => {
     });
     const storageRef = `${workflow.id}/final-reports/report.docx`;
     await localFilesystemStorage.putBinary(storageRef, docxBuffer);
+    // Phase 18: FinalRenderer's completion now lands on POST_PROCESSING, not
+    // COMPLETED directly -- drive that last hop the same way, bypassing
+    // postProcessingRunner.ts.
+    await handleSkillOutput({
+      workflowId: workflow.id,
+      envelope: postProcessingEnvelope(),
+      promptVersion: "orchestrator-1",
+      schemaVersion: "1.0.0",
+    });
     await createFinalReport({
       workflowId: workflow.id,
       draftId: draft.id,

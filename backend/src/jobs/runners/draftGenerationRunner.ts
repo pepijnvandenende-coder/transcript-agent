@@ -3,9 +3,12 @@ import { handleSkillOutput } from "../../approval/gateway";
 import { validateDraftStructure } from "../../approval/reportStructureValidator";
 import * as draftGenerator from "../../ai/skills/draftGenerator";
 import { createDraftVersion } from "../../persistence/repositories/draftRepository";
+import { findLatestContextItemsForWorkflow } from "../../persistence/repositories/contextItemRepository";
+import { findActiveContextTypePolicies } from "../../persistence/repositories/contextTypePolicyRepository";
 import { findLatestMerge } from "../../persistence/repositories/mergeRepository";
 import { findPolicyByKey } from "../../persistence/repositories/reportTypePolicyRepository";
 import { findWorkflowById } from "../../persistence/repositories/workflowRepository";
+import { localFilesystemStorage } from "../../storage/localFilesystemStorage";
 import type { JobRunnerInput, JobRunnerResult } from "../worker";
 
 // GENERATE_DRAFT jobs never carry an explicit inputRef -- like
@@ -39,11 +42,32 @@ export async function runGenerateDraftJob(job: JobRunnerInput): Promise<JobRunne
   const sections = (merge.mergedSections as unknown as Array<{ content: string }>) ?? [];
   const mergedContent = sections.map((section) => section.content).join("\n");
 
+  // Phase 18: the explicit context step's active context_items, resolved to
+  // their Dutch instructionLabel via the (small, in-memory) active catalog --
+  // only items whose type is still active are included, so deactivating a
+  // context_type_policies row also stops it from reaching the prompt.
+  const [activeContextPolicies, contextItems] = await Promise.all([
+    findActiveContextTypePolicies(),
+    findLatestContextItemsForWorkflow(job.workflowId),
+  ]);
+  const labelByType = new Map(activeContextPolicies.map((policy) => [policy.key, policy.instructionLabel]));
+  const additionalContext = (
+    await Promise.all(
+      contextItems
+        .filter((item) => labelByType.has(item.contextType))
+        .map(async (item) => ({
+          label: labelByType.get(item.contextType)!,
+          content: await localFilesystemStorage.get(item.storageRef),
+        })),
+    )
+  ).filter((item) => item.content.trim().length > 0);
+
   const envelope = await draftGenerator.run({
     mergedContent,
     policyKey: policy.key,
     promptRef: policy.promptRef,
     subject: workflow.title,
+    additionalContext,
   });
 
   const { aiOutputId } = await handleSkillOutput({
@@ -79,6 +103,7 @@ export async function runGenerateDraftJob(job: JobRunnerInput): Promise<JobRunne
     subject: envelope.result.subject,
     sections: envelope.result.sections as unknown as Prisma.InputJsonValue,
     coverage: envelope.result.coverage,
+    actionsPresent: envelope.result.actions_present,
   });
 
   return { resultAiOutputId: aiOutputId };

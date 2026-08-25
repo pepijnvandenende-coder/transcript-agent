@@ -1,6 +1,6 @@
 import { Document, HeadingLevel, Packer, Paragraph, Table, TableCell, TableRow, TextRun } from "docx";
 import type { DraftSection, FinalRendererEnvelope } from "../skillEnvelope";
-import { type ContentBlock, parseContentBlocks } from "../../rendering/parseContentBlocks";
+import { type ContentBlock, parseContentBlocks, parseOpenQuestionBlocks } from "../../rendering/parseContentBlocks";
 
 // Phase 9: the last skill in the pipeline. Per the architecture doc,
 // FinalRenderer is "typically template-only, no LLM" -- unlike every earlier
@@ -62,6 +62,26 @@ const BULLET_SPACING = { after: 80 };
 const HEADING1_SPACING = { after: 240 };
 const HEADING2_SPACING = { before: 360, after: 160 };
 
+// Matches the canonical heading both report-type prompts use for this
+// section (see ai/prompts/reportTypes/{thematic,qa}.md and the
+// optionalSections catalog value in prisma/seed.ts) -- reportStructureValidator.ts
+// relies on the same exact-string match, so the model is already expected to
+// emit this heading verbatim.
+const OPEN_QUESTIONS_HEADING = "Openstaande vragen / onduidelijkheden";
+
+// "Openstaande vragen / onduidelijkheden" renders one block per question
+// (label + duiding kept together in one paragraph, via a soft line break)
+// with a real paragraph gap -- not parseContentBlocks()'s bullet list -- so
+// the blank line the model puts between questions survives into the .docx as
+// a visible gap, matching parseOpenQuestionBlocks()'s doc comment. The
+// existing per-paragraph spacing (see PARAGRAPH_SPACING) provides that gap
+// between blocks; break: 1 keeps a block's own lines tight.
+function openQuestionBlockToDocxParagraph(block: string): Paragraph {
+  const lines = block.split("\n");
+  const children = lines.map((line, index) => new TextRun(index === 0 ? { text: line } : { text: line, break: 1 }));
+  return new Paragraph({ children, spacing: PARAGRAPH_SPACING });
+}
+
 function blockToDocxElements(block: ContentBlock): Array<Paragraph | Table> {
   if (block.type === "paragraph") {
     return [new Paragraph({ text: block.text, spacing: PARAGRAPH_SPACING })];
@@ -83,8 +103,11 @@ function blockToDocxElements(block: ContentBlock): Array<Paragraph | Table> {
 // Real Word structures throughout -- Titel as Heading 1, every section
 // heading as Heading 2, Markdown tables/bullets in section content turned
 // into actual docx.Table/bulleted docx.Paragraph via parseContentBlocks(),
-// no visible Markdown syntax. Optional sections the model left inapplicable
-// are skipped entirely rather than rendered as an empty heading.
+// no visible Markdown syntax. "Openstaande vragen / onduidelijkheden" is the
+// one exception, rendered via parseOpenQuestionBlocks() instead (see that
+// function and openQuestionBlockToDocxParagraph() above). Optional sections
+// the model left inapplicable are skipped entirely rather than rendered as
+// an empty heading.
 export function renderDocx(params: {
   title: string;
   attendees: string[];
@@ -107,8 +130,14 @@ export function renderDocx(params: {
   for (const section of sections) {
     if (!isApplicableSection(section)) continue;
     children.push(new Paragraph({ text: section.heading, heading: HeadingLevel.HEADING_2, spacing: HEADING2_SPACING }));
-    for (const block of parseContentBlocks(section.content)) {
-      children.push(...blockToDocxElements(block));
+    if (section.heading === OPEN_QUESTIONS_HEADING) {
+      for (const block of parseOpenQuestionBlocks(section.content)) {
+        children.push(openQuestionBlockToDocxParagraph(block));
+      }
+    } else {
+      for (const block of parseContentBlocks(section.content)) {
+        children.push(...blockToDocxElements(block));
+      }
     }
   }
 

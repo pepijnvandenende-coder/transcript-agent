@@ -11,7 +11,7 @@ export async function createWorkflow(params: { title: string; createdById: strin
       data: {
         title: params.title,
         createdById: params.createdById,
-        currentState: WorkflowState.CREATED,
+        currentState: WorkflowState.CONTEXT_INPUT,
         status: WorkflowStatus.ACTIVE,
       },
     });
@@ -22,7 +22,7 @@ export async function createWorkflow(params: { title: string; createdById: strin
     await recordTransition(tx, {
       workflowId: workflow.id,
       fromState: null,
-      toState: WorkflowState.CREATED,
+      toState: WorkflowState.CONTEXT_INPUT,
       actorType: ActorType.USER,
       actorId: params.createdById,
       metadata: { reason: "workflow_created" },

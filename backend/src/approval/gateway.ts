@@ -217,6 +217,26 @@ const SKILL_ROUTING: Record<string, SkillRouting> = {
     // later-phase skill above -- no new AiOutputInputType.
     inputs: [],
   },
+  // Phase 18: the POST_PROCESSING orchestrator -- AUTO, same unconditional
+  // shape as FinalRenderer above. This entry exists purely so
+  // JOB_FOR_STATE/STATE_FOR_JOB_TYPE (derived below) know POST_PROCESSING
+  // auto-enqueues RUN_POST_PROCESSING on entry and routes job failures back
+  // to it; jobs/runners/postProcessingRunner.ts is what actually fans out
+  // into the active post_processing_skill_policies rows, each of which is
+  // recorded as its own ai_outputs/post_processing_results row, not through
+  // this routing entry.
+  PostProcessing: {
+    events: {
+      autoApproved: "post_processing_completed",
+      lowConfidence: "post_processing_completed",
+      schemaInvalid: "post_processing_completed",
+      bypassEvent: "post_processing_completed",
+    },
+    nextState: WorkflowState.COMPLETED,
+    originatingState: WorkflowState.POST_PROCESSING,
+    jobType: JobType.RUN_POST_PROCESSING,
+    inputs: [],
+  },
 };
 
 function routingFor(skillName: string): SkillRouting {

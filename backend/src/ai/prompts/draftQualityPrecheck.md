@@ -13,23 +13,35 @@ De structurele opbouw (verplichte onderdelen, past de indeling bij het
 verslagtype) is al apart en deterministisch gecontroleerd -- dat hoef je niet
 te herhalen. Alleen velden die daadwerkelijk zijn ingevuld worden aan jou
 voorgelegd; ga voor elk ervan na of het overeenkomt met wat de brontekst
-daadwerkelijk vermeldt (niet met wat er "zou moeten" staan):
+daadwerkelijk vermeldt (niet met wat er "zou moeten" staan).
 
-1. **Deelnemers correct overgenomen** -- `attendees_correct`.
-2. **Datum correct overgenomen** -- `date_correct`.
-3. **Onderwerp correct overgenomen** -- `subject_correct`.
-4. **Feitelijk en gebaseerd op de brontekst** -- `factually_grounded`: bevat
-   het verslag beweringen, details of afspraken die niet uit de brontekst
-   zijn te herleiden (verzonnen of aangevulde informatie)? Kleine, voor de
-   hand liggende samenvattende formuleringen zijn geen probleem; nieuwe
-   feiten die niet in de bron voorkomen wel.
+Beoordeel de volgende punten. Voor elk van de eerste drie en voor
+"factually_grounded" geef je een boolean plus een `reason`: een korte,
+concrete Nederlandse toelichting. Laat `reason` een lege string wanneer het
+punt slaagt; vul hem altijd met een concrete uitleg wanneer het punt niet
+slaagt (bijvoorbeeld: welke naam niet in de brontekst voorkomt, of welke
+bewering niet is terug te vinden) -- de reviewer moet aan de hand van je
+`reason` meteen weten waar hij op moet letten, zonder zelf het transcript te
+hoeven doorzoeken.
 
-Geef voor elk van deze vier punten een boolean (`true`/`false`). Als een veld
-niet is ingevuld (bijvoorbeeld geen deelnemers vermeld), beoordeel het dan
-toch naar beste weten aan de hand van wat er wél staat -- de uitkomst wordt
-alleen gebruikt wanneer het veld daadwerkelijk aanwezig is.
+1. **attendees** (`correct` + `reason`) -- komen de genoemde deelnemers
+   overeen met de brontekst?
+2. **date** (`correct` + `reason`) -- komt de genoemde datum overeen met de
+   brontekst?
+3. **subject** (`correct` + `reason`) -- komt het genoemde onderwerp overeen
+   met de brontekst?
+4. **factually_grounded** (`grounded` + `reason`) -- bevat het verslag
+   beweringen, details of afspraken die niet uit de brontekst zijn te
+   herleiden (verzonnen of aangevulde informatie)? Kleine, voor de hand
+   liggende samenvattende formuleringen zijn geen probleem; nieuwe feiten
+   die niet in de bron voorkomen wel.
 
-Vul `issues` met korte, concrete Nederlandse omschrijvingen van elk punt dat
-niet is geslaagd (bijvoorbeeld welke deelnemer niet in de brontekst
-voorkomt, of welke bewering niet is terug te vinden). Laat leeg als alles
-slaagt.
+Als een veld niet is ingevuld (bijvoorbeeld geen deelnemers vermeld),
+beoordeel het dan toch naar beste weten aan de hand van wat er wél staat --
+de uitkomst wordt alleen gebruikt wanneer het veld daadwerkelijk aanwezig is.
+
+Of de brontekst concrete acties/vervolgstappen bevat wordt niet door jou
+beoordeeld: die beoordeling is al gemaakt door de skill die het concept zelf
+heeft opgesteld (en wordt los van jouw oordeel aan de "Acties en
+vervolgstappen"-checklistregel toegevoegd), zodat die conclusie nooit van de
+jouwe kan afwijken.

@@ -61,6 +61,13 @@ describe("GET /workflows/:id/jobs/latest and POST /workflows/:id/actions/retry-f
   }
 
   async function uploadAndSubmit(workflowId: string) {
+    // Phase 19: CREATED (where transcript upload happens) is only reachable
+    // after the mandatory context step.
+    await fetch(`${baseUrl}/workflows/${workflowId}/actions/continue-to-transcript`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: userId }),
+    });
     await fetch(`${baseUrl}/workflows/${workflowId}/transcript`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

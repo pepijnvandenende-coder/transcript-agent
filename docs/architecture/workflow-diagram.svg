@@ -1,0 +1,299 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2000 3415" width="2000" height="3415" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4B5563"/></marker>
+<marker id="arrowLoop" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#B45309"/></marker>
+<marker id="arrowLoopAi" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2F6FED"/></marker></defs>
+<rect x="0" y="0" width="2000" height="3415" fill="#FCFCFD"/>
+<rect x="196" y="102" width="518" height="3293" rx="18" fill="#FFFBF6"/>
+<rect x="706" y="102" width="518" height="3293" rx="18" fill="#FAFAFB"/>
+<rect x="1216" y="102" width="518" height="3293" rx="18" fill="#F8FAFF"/>
+<text x="1000" y="44" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="27" font-weight="800" fill="#1F2430" text-anchor="middle">Van transcript-upload tot gespreksverslag-download</text>
+<text x="1000" y="71" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="13" font-weight="500" fill="#6B7280" text-anchor="middle">De daadwerkelijk geïmplementeerde agentic workflow van Transcript-Agent — gereconstrueerd uit de finite-state machine, de approval-gateway en de geregistreerde AI-skills</text>
+<rect x="210" y="102" width="490" height="46" rx="12" ry="12" fill="#FFF3E6" stroke="#E8871E" stroke-width="1.4"/>
+<circle cx="240" cy="125" r="13" fill="#FFFFFF" stroke="#E8871E" stroke-width="1.4"/>
+<g transform="translate(231.875,116.875) scale(0.8125)" stroke="#E8871E" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="6.5" r="3.2"/><path d="M3.5 17c0-3.6 3-6 6.5-6s6.5 2.4 6.5 6"/></g>
+<text x="264" y="122" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="14" font-weight="800" fill="#8A4B0B" text-anchor="start" letter-spacing="0.4">GEBRUIKER</text>
+<text x="264" y="137" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10" font-weight="500" fill="#6B7280" text-anchor="start">menselijke actie</text>
+<rect x="720" y="102" width="490" height="46" rx="12" ry="12" fill="#F1F2F5" stroke="#64748B" stroke-width="1.4"/>
+<circle cx="750" cy="125" r="13" fill="#FFFFFF" stroke="#64748B" stroke-width="1.4"/>
+<g transform="translate(741.875,116.875) scale(0.8125)" stroke="#64748B" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="2.6"/><path d="M10 2.6v2.1M10 15.3v2.1M17.4 10h-2.1M4.7 10H2.6M15.2 4.8l-1.5 1.5M6.3 13.7l-1.5 1.5M15.2 15.2l-1.5-1.5M6.3 6.3 4.8 4.8"/></g>
+<text x="774" y="122" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="14" font-weight="800" fill="#3F4A5A" text-anchor="start" letter-spacing="0.4">WORKFLOW ENGINE</text>
+<text x="774" y="137" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10" font-weight="500" fill="#6B7280" text-anchor="start">beslismomenten</text>
+<rect x="1230" y="102" width="490" height="46" rx="12" ry="12" fill="#EAF1FF" stroke="#2F6FED" stroke-width="1.4"/>
+<circle cx="1260" cy="125" r="13" fill="#FFFFFF" stroke="#2F6FED" stroke-width="1.4"/>
+<g transform="translate(1251.875,116.875) scale(0.8125)" stroke="#2F6FED" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="6.5" width="12" height="9" rx="2.4"/><path d="M10 6.5V3.5"/><circle cx="10" cy="2.6" r="1"/><circle cx="7.6" cy="10.8" r="1" fill="#2F6FED" stroke="none"/><circle cx="12.4" cy="10.8" r="1" fill="#2F6FED" stroke="none"/><path d="M7.5 13.6h5"/><path d="M2 9.5v3"/><path d="M18 9.5v3"/></g>
+<text x="1284" y="122" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="14" font-weight="800" fill="#1D4ED8" text-anchor="start" letter-spacing="0.4">AI AGENT</text>
+<text x="1284" y="137" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10" font-weight="500" fill="#6B7280" text-anchor="start">geregistreerde skill</text>
+<text x="210" y="194" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="34" font-weight="800" fill="#EEF0F3" text-anchor="start">1</text>
+<text x="254" y="185" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="15.5" font-weight="800" fill="#1F2430" text-anchor="start" letter-spacing="0.2">Upload &amp; transcriptvalidatie</text>
+<line x1="254" y1="195" x2="1720" y2="195" stroke="#E5E7EB" stroke-width="1.5"/>
+<rect x="235" y="216" width="440" height="74.5" rx="14" ry="14" fill="#FFF3E6" stroke="#E8871E" stroke-width="1.6"/>
+<circle cx="270" cy="244" r="15" fill="#FFFFFF" stroke="#E8871E" stroke-width="1.4"/>
+<g transform="translate(260.625,234.625) scale(0.9375)" stroke="#E8871E" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17.5V3"/><path d="M5 3.5h11l-3 4 3 4H5"/></g>
+<text x="295" y="248" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="14" font-weight="700" fill="#1F2430" text-anchor="start">Workflow aanmaken</text>
+<text x="295" y="267" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#6B7280" text-anchor="start">Titel van de vergadering invoeren.</text>
+<rect x="235" y="308.5" width="440" height="89" rx="14" ry="14" fill="#FFF3E6" stroke="#E8871E" stroke-width="1.6"/>
+<circle cx="270" cy="336.5" r="15" fill="#FFFFFF" stroke="#E8871E" stroke-width="1.4"/>
+<g transform="translate(260.625,327.125) scale(0.9375)" stroke="#E8871E" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13V3"/><path d="M5.5 7.5 10 3l4.5 4.5"/><path d="M3 15.5v1a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-1"/></g>
+<text x="295" y="340.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="14" font-weight="700" fill="#1F2430" text-anchor="start">Transcript + notities uploaden</text>
+<text x="295" y="359.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#6B7280" text-anchor="start">Transcript verplicht, notities optioneel → indienen voor</text>
+<text x="295" y="374" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#6B7280" text-anchor="start">validatie.</text>
+<rect x="1255" y="308.5" width="440" height="117.5" rx="14" ry="14" fill="#EAF1FF" stroke="#2F6FED" stroke-width="1.6"/>
+<circle cx="1290" cy="336.5" r="15" fill="#FFFFFF" stroke="#2F6FED" stroke-width="1.4"/>
+<g transform="translate(1280.625,327.125) scale(0.9375)" stroke="#2F6FED" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="6.5" width="12" height="9" rx="2.4"/><path d="M10 6.5V3.5"/><circle cx="10" cy="2.6" r="1"/><circle cx="7.6" cy="10.8" r="1" fill="#2F6FED" stroke="none"/><circle cx="12.4" cy="10.8" r="1" fill="#2F6FED" stroke="none"/><path d="M7.5 13.6h5"/><path d="M2 9.5v3"/><path d="M18 9.5v3"/></g>
+<text x="1315" y="333.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="14" font-weight="700" fill="#1F2430" text-anchor="start">TranscriptQualityChecker</text>
+<text x="1315" y="348.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10" font-weight="700" fill="#94A0AF" text-anchor="start" letter-spacing="0.4">VALIDATING_TRANSCRIPT</text>
+<text x="1315" y="367.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#6B7280" text-anchor="start">Beoordeelt of het transcript bruikbaar is.</text>
+<rect x="1315" y="373" width="111" height="20" rx="10" ry="10" fill="#F3F4F6" stroke="#D1D5DB" stroke-width="1"/>
+<text x="1370.5" y="387" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" fill="#6B7280" text-anchor="middle" letter-spacing="0.3">STUB — geen LLM</text>
+<path d="M675,353 L1255,353" fill="none" stroke="#4B5563" stroke-width="2" marker-end="url(#arrow)" stroke-linejoin="round"/>
+<polygon points="965,462 1105,506 965,550 825,506" fill="#EAFBF1" stroke="#16A34A" stroke-width="1.8"/>
+<text x="965" y="502" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="13" font-weight="700" fill="#0F7A38" text-anchor="middle">confidence ≥ 0,75 ?</text>
+<text x="965" y="520" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10" font-weight="500" fill="#0F7A38" text-anchor="middle">AUTO_IF_ABOVE</text>
+<path d="M1475,426 L1475,506 L1105,506" fill="none" stroke="#4B5563" stroke-width="2" marker-end="url(#arrow)" stroke-linejoin="round"/>
+<rect x="235" y="584" width="440" height="74.5" rx="14" ry="14" fill="#FFF3E6" stroke="#E8871E" stroke-width="1.6" stroke-dasharray="6 4"/>
+<circle cx="270" cy="612" r="15" fill="#FFFFFF" stroke="#E8871E" stroke-width="1.4"/>
+<g transform="translate(260.625,602.625) scale(0.9375)" stroke="#E8871E" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.3 17.5 16H2.5z" stroke-linejoin="round"/><path d="M10 8.3v3.4"/><circle cx="10" cy="14" r="0.9" fill="#E8871E" stroke="none"/></g>
+<text x="295" y="616" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="14" font-weight="700" fill="#1F2430" text-anchor="start">Opnieuw uploaden vereist</text>
+<text x="295" y="635" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#6B7280" text-anchor="start">TRANSCRIPT_INSUFFICIENT — transcript te summier bevonden.</text>
+<rect x="235" y="678.5" width="440" height="89" rx="14" ry="14" fill="#FFF3E6" stroke="#E8871E" stroke-width="1.6"/>
+<circle cx="270" cy="706.5" r="15" fill="#FFFFFF" stroke="#E8871E" stroke-width="1.4"/>
+<g transform="translate(260.625,697.125) scale(0.9375)" stroke="#E8871E" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3.5 15.5 9l-4.6 1.6L9 15.4z" stroke-linejoin="round"/></g>
+<text x="295" y="710.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="14" font-weight="700" fill="#1F2430" text-anchor="start">Bevestigen of laten hercontroleren</text>
+<text x="295" y="729.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#6B7280" text-anchor="start">Lage confidence. Bevestigen → verder; opnieuw laten controleren</text>
+<text x="295" y="744" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#6B7280" text-anchor="start">→ herhaalt deze stap.</text>
+<path d="M825,494 L455,494 L455,584" fill="none" stroke="#4B5563" stroke-width="2" marker-end="url(#arrow)" stroke-linejoin="round"/>
+<rect x="614.9" y="483" width="82.2" height="22" rx="6" ry="6" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1"/>
+<text x="656" y="498" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="600" fill="#6B7280" text-anchor="middle">onvoldoende</text>
+<path d="M825,524 L735,524 L735,723 L675,723" fill="none" stroke="#4B5563" stroke-width="2" marker-end="url(#arrow)" stroke-linejoin="round"/>
+<rect x="726.5" y="513" width="107" height="22" rx="6" ry="6" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1"/>
+<text x="780" y="528" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="600" fill="#6B7280" text-anchor="middle">laag / ongeldig</text>
+<path d="M235,621.25 L150,621.25 L150,353 L235,353" fill="none" stroke="#B45309" stroke-width="2" stroke-dasharray="7 5" marker-end="url(#arrowLoop)" stroke-linejoin="round"/>
+<rect x="97.4" y="476.125" width="113.2" height="22" rx="6" ry="6" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1"/>
+<text x="154" y="491.125" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="600" fill="#6B7280" text-anchor="middle">opnieuw uploaden</text>
+<text x="210" y="831.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="34" font-weight="800" fill="#EEF0F3" text-anchor="start">2</text>
+<text x="254" y="822.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="15.5" font-weight="800" fill="#1F2430" text-anchor="start" letter-spacing="0.2">Samenvoegen van transcript + notities</text>
+<line x1="254" y1="832.5" x2="1720" y2="832.5" stroke="#E5E7EB" stroke-width="1.5"/>
+<rect x="1255" y="853.5" width="440" height="117.5" rx="14" ry="14" fill="#EAF1FF" stroke="#2F6FED" stroke-width="1.6"/>
+<circle cx="1290" cy="881.5" r="15" fill="#FFFFFF" stroke="#2F6FED" stroke-width="1.4"/>
+<g transform="translate(1280.625,872.125) scale(0.9375)" stroke="#2F6FED" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="6.5" width="12" height="9" rx="2.4"/><path d="M10 6.5V3.5"/><circle cx="10" cy="2.6" r="1"/><circle cx="7.6" cy="10.8" r="1" fill="#2F6FED" stroke="none"/><circle cx="12.4" cy="10.8" r="1" fill="#2F6FED" stroke="none"/><path d="M7.5 13.6h5"/><path d="M2 9.5v3"/><path d="M18 9.5v3"/></g>
+<text x="1315" y="878.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="14" font-weight="700" fill="#1F2430" text-anchor="start">Merger</text>
+<text x="1315" y="893.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10" font-weight="700" fill="#94A0AF" text-anchor="start" letter-spacing="0.4">MERGING</text>
+<text x="1315" y="912.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#6B7280" text-anchor="start">Combineert transcript- en notitie-secties.</text>
+<rect x="1315" y="918" width="111" height="20" rx="10" ry="10" fill="#F3F4F6" stroke="#D1D5DB" stroke-width="1"/>
+<text x="1370.5" y="932" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" fill="#6B7280" text-anchor="middle" letter-spacing="0.3">STUB — geen LLM</text>
+<path d="M965,550 L965,701.75 L1475,701.75 L1475,853.5" fill="none" stroke="#4B5563" stroke-width="2" marker-end="url(#arrow)" stroke-linejoin="round"/>
+<rect x="936.3" y="614.875" width="57.4" height="22" rx="6" ry="6" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1"/>
+<text x="965" y="629.875" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="600" fill="#6B7280" text-anchor="middle">in orde</text>
+<polygon points="965,1007 1115,1051 965,1095 815,1051" fill="#EAFBF1" stroke="#16A34A" stroke-width="1.8"/>
+<text x="965" y="1047" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="13" font-weight="700" fill="#0F7A38" text-anchor="middle">confidence ≥ 0,80 ?</text>
+<text x="965" y="1065" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10" font-weight="500" fill="#0F7A38" text-anchor="middle">zonder notities: altijd oké</text>
+<path d="M1475,971 L1475,1051 L1115,1051" fill="none" stroke="#4B5563" stroke-width="2" marker-end="url(#arrow)" stroke-linejoin="round"/>
+<rect x="235" y="1129" width="440" height="89" rx="14" ry="14" fill="#FFF3E6" stroke="#E8871E" stroke-width="1.6"/>
+<circle cx="270" cy="1157" r="15" fill="#FFFFFF" stroke="#E8871E" stroke-width="1.4"/>
+<g transform="translate(260.625,1147.625) scale(0.9375)" stroke="#E8871E" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3.5 15.5 9l-4.6 1.6L9 15.4z" stroke-linejoin="round"/></g>
+<text x="295" y="1161" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="14" font-weight="700" fill="#1F2430" text-anchor="start">Bevestigen of laten hercontroleren</text>
+<text x="295" y="1180" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#6B7280" text-anchor="start">Lage confidence op de samengevoegde inhoud. Bevestigen →</text>
+<text x="295" y="1194.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#6B7280" text-anchor="start">verder; opnieuw laten controleren → herhaalt deze stap.</text>
+<path d="M815,1051 L455,1051 L455,1129" fill="none" stroke="#4B5563" stroke-width="2" marker-end="url(#arrow)" stroke-linejoin="round"/>
+<rect x="581.5" y="1040" width="107" height="22" rx="6" ry="6" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1"/>
+<text x="635" y="1055" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="600" fill="#6B7280" text-anchor="middle">laag / ongeldig</text>
+<text x="210" y="1282" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="34" font-weight="800" fill="#EEF0F3" text-anchor="start">3</text>
+<text x="254" y="1273" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="15.5" font-weight="800" fill="#1F2430" text-anchor="start" letter-spacing="0.2">Conflictdetectie tussen bronnen</text>
+<line x1="254" y1="1283" x2="1720" y2="1283" stroke="#E5E7EB" stroke-width="1.5"/>
+<rect x="1255" y="1304" width="440" height="117.5" rx="14" ry="14" fill="#EAF1FF" stroke="#2F6FED" stroke-width="1.6"/>
+<circle cx="1290" cy="1332" r="15" fill="#FFFFFF" stroke="#2F6FED" stroke-width="1.4"/>
+<g transform="translate(1280.625,1322.625) scale(0.9375)" stroke="#2F6FED" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="6.5" width="12" height="9" rx="2.4"/><path d="M10 6.5V3.5"/><circle cx="10" cy="2.6" r="1"/><circle cx="7.6" cy="10.8" r="1" fill="#2F6FED" stroke="none"/><circle cx="12.4" cy="10.8" r="1" fill="#2F6FED" stroke="none"/><path d="M7.5 13.6h5"/><path d="M2 9.5v3"/><path d="M18 9.5v3"/></g>
+<text x="1315" y="1329" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="14" font-weight="700" fill="#1F2430" text-anchor="start">ConflictDetector</text>
+<text x="1315" y="1344" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10" font-weight="700" fill="#94A0AF" text-anchor="start" letter-spacing="0.4">DETECTING_CONFLICTS</text>
+<text x="1315" y="1363" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#6B7280" text-anchor="start">Signaleert tegenstrijdigheden tussen transcript en notities.</text>
+<rect x="1315" y="1368.5" width="111" height="20" rx="10" ry="10" fill="#F3F4F6" stroke="#D1D5DB" stroke-width="1"/>
+<text x="1370.5" y="1382.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" fill="#6B7280" text-anchor="middle" letter-spacing="0.3">STUB — geen LLM</text>
+<path d="M965,1095 L965,1199.5 L1475,1199.5 L1475,1304" fill="none" stroke="#4B5563" stroke-width="2" marker-end="url(#arrow)" stroke-linejoin="round"/>
+<rect x="936.3" y="1136.25" width="57.4" height="22" rx="6" ry="6" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1"/>
+<text x="965" y="1151.25" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="600" fill="#6B7280" text-anchor="middle">in orde</text>
+<polygon points="965,1457.5 1105,1501.5 965,1545.5 825,1501.5" fill="#EAFBF1" stroke="#16A34A" stroke-width="1.8"/>
+<text x="965" y="1497.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="13" font-weight="700" fill="#0F7A38" text-anchor="middle">conflicten gevonden ?</text>
+<text x="965" y="1515.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10" font-weight="500" fill="#0F7A38" text-anchor="middle">ja ⇒ mandatory review</text>
+<path d="M1475,1421.5 L1475,1501.5 L1105,1501.5" fill="none" stroke="#4B5563" stroke-width="2" marker-end="url(#arrow)" stroke-linejoin="round"/>
+<rect x="235" y="1579.5" width="440" height="89" rx="14" ry="14" fill="#FFF3E6" stroke="#E8871E" stroke-width="1.6"/>
+<circle cx="270" cy="1607.5" r="15" fill="#FFFFFF" stroke="#E8871E" stroke-width="1.4"/>
+<g transform="translate(260.625,1598.125) scale(0.9375)" stroke="#E8871E" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5h14v9H8.5L5 16.5V13.5H3z"/></g>
+<text x="295" y="1611.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="14" font-weight="700" fill="#1F2430" text-anchor="start">Conflicten toelichten</text>
+<text x="295" y="1630.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#6B7280" text-anchor="start">Elk conflict apart verklaren, lus tot alles is opgelost</text>
+<text x="295" y="1645" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#6B7280" text-anchor="start">(herstart daarna automatisch stap 2). Of: opnieuw beginnen.</text>
+<path d="M825,1489.5 L455,1489.5 L455,1579.5" fill="none" stroke="#4B5563" stroke-width="2" marker-end="url(#arrow)" stroke-linejoin="round"/>
+<rect x="606.5" y="1478.5" width="107" height="22" rx="6" ry="6" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1"/>
+<text x="660" y="1493.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="600" fill="#6B7280" text-anchor="middle">ja — conflicten</text>
+<rect x="235" y="1688.5" width="440" height="89" rx="14" ry="14" fill="#FFF3E6" stroke="#E8871E" stroke-width="1.6"/>
+<circle cx="270" cy="1716.5" r="15" fill="#FFFFFF" stroke="#E8871E" stroke-width="1.4"/>
+<g transform="translate(260.625,1707.125) scale(0.9375)" stroke="#E8871E" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3.5 15.5 9l-4.6 1.6L9 15.4z" stroke-linejoin="round"/></g>
+<text x="295" y="1720.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="14" font-weight="700" fill="#1F2430" text-anchor="start">Bevestigen of laten hercontroleren</text>
+<text x="295" y="1739.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#6B7280" text-anchor="start">Geen conflicten, maar lage confidence. Bevestigen → verder;</text>
+<text x="295" y="1754" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#6B7280" text-anchor="start">opnieuw laten controleren → herhaalt deze stap.</text>
+<path d="M825,1519.5 L735,1519.5 L735,1733 L675,1733" fill="none" stroke="#4B5563" stroke-width="2" marker-end="url(#arrow)" stroke-linejoin="round"/>
+<rect x="685.1" y="1508.5" width="69.80000000000001" height="22" rx="6" ry="6" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1"/>
+<text x="720" y="1523.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="600" fill="#6B7280" text-anchor="middle">nee, laag</text>
+<path d="M235,1634 L75,1634 L75,337 L235,337" fill="none" stroke="#B45309" stroke-width="2" stroke-dasharray="7 5" marker-end="url(#arrowLoop)" stroke-linejoin="round"/>
+<rect x="25.5" y="1017.5" width="107" height="22" rx="6" ry="6" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1"/>
+<text x="79" y="1032.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="600" fill="#6B7280" text-anchor="middle">herstart upload</text>
+<text x="210" y="1841.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="34" font-weight="800" fill="#EEF0F3" text-anchor="start">4</text>
+<text x="254" y="1832.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="15.5" font-weight="800" fill="#1F2430" text-anchor="start" letter-spacing="0.2">Verslagtype voorstellen &amp; kiezen</text>
+<line x1="254" y1="1842.5" x2="1720" y2="1842.5" stroke="#E5E7EB" stroke-width="1.5"/>
+<rect x="1255" y="1863.5" width="440" height="117.5" rx="14" ry="14" fill="#EAF1FF" stroke="#2F6FED" stroke-width="1.6"/>
+<circle cx="1290" cy="1891.5" r="15" fill="#FFFFFF" stroke="#2F6FED" stroke-width="1.4"/>
+<g transform="translate(1280.625,1882.125) scale(0.9375)" stroke="#2F6FED" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="6.5" width="12" height="9" rx="2.4"/><path d="M10 6.5V3.5"/><circle cx="10" cy="2.6" r="1"/><circle cx="7.6" cy="10.8" r="1" fill="#2F6FED" stroke="none"/><circle cx="12.4" cy="10.8" r="1" fill="#2F6FED" stroke="none"/><path d="M7.5 13.6h5"/><path d="M2 9.5v3"/><path d="M18 9.5v3"/></g>
+<text x="1315" y="1888.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="14" font-weight="700" fill="#1F2430" text-anchor="start">ReportTypeAdvisor</text>
+<text x="1315" y="1903.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10" font-weight="700" fill="#94A0AF" text-anchor="start" letter-spacing="0.4">SUGGESTING_REPORT_TYPE</text>
+<text x="1315" y="1922.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#6B7280" text-anchor="start">Stelt “Thematisch” of “Vraag &amp; antwoord” voor.</text>
+<rect x="1315" y="1928" width="135.8" height="20" rx="10" ry="10" fill="#DCEAFF" stroke="#93C5FD" stroke-width="1"/>
+<text x="1382.9" y="1942" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" fill="#1D4ED8" text-anchor="middle" letter-spacing="0.3">LLM · claude-opus-5</text>
+<rect x="1458.8" y="1928" width="73.80000000000001" height="20" rx="10" ry="10" fill="#FEE2E2" stroke="#FCA5A5" stroke-width="1"/>
+<text x="1495.7" y="1942" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" fill="#B91C1C" text-anchor="middle" letter-spacing="0.3">MANDATORY</text>
+<path d="M965,1545.5 L965,1704.5 L1475,1704.5 L1475,1863.5" fill="none" stroke="#4B5563" stroke-width="2" marker-end="url(#arrow)" stroke-linejoin="round"/>
+<rect x="920.8" y="1614" width="88.4" height="22" rx="6" ry="6" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1"/>
+<text x="965" y="1629" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="600" fill="#6B7280" text-anchor="middle">nee, in orde</text>
+<rect x="235" y="1869.5" width="440" height="89" rx="14" ry="14" fill="#FFF3E6" stroke="#E8871E" stroke-width="1.6"/>
+<circle cx="270" cy="1897.5" r="15" fill="#FFFFFF" stroke="#E8871E" stroke-width="1.4"/>
+<g transform="translate(260.625,1888.125) scale(0.9375)" stroke="#E8871E" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3.5 15.5 9l-4.6 1.6L9 15.4z" stroke-linejoin="round"/></g>
+<text x="295" y="1901.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="14" font-weight="700" fill="#1F2430" text-anchor="start">Verslagtype kiezen</text>
+<text x="295" y="1920.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#6B7280" text-anchor="start">Reviewer kiest of bevestigt een type uit de volledige</text>
+<text x="295" y="1935" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#6B7280" text-anchor="start">catalogus.</text>
+<path d="M1255,1922.25 L675,1922.25" fill="none" stroke="#4B5563" stroke-width="2" marker-end="url(#arrow)" stroke-linejoin="round"/>
+<rect x="911.5" y="1893.25" width="107" height="22" rx="6" ry="6" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1"/>
+<text x="965" y="1908.25" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="600" fill="#6B7280" text-anchor="middle">voorstel gedaan</text>
+<text x="210" y="2041" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="34" font-weight="800" fill="#EEF0F3" text-anchor="start">5</text>
+<text x="254" y="2032" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="15.5" font-weight="800" fill="#1F2430" text-anchor="start" letter-spacing="0.2">Conceptverslag genereren</text>
+<line x1="254" y1="2042" x2="1720" y2="2042" stroke="#E5E7EB" stroke-width="1.5"/>
+<rect x="1255" y="2063" width="440" height="132" rx="14" ry="14" fill="#EAF1FF" stroke="#2F6FED" stroke-width="1.6"/>
+<circle cx="1290" cy="2091" r="15" fill="#FFFFFF" stroke="#2F6FED" stroke-width="1.4"/>
+<g transform="translate(1280.625,2081.625) scale(0.9375)" stroke="#2F6FED" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="6.5" width="12" height="9" rx="2.4"/><path d="M10 6.5V3.5"/><circle cx="10" cy="2.6" r="1"/><circle cx="7.6" cy="10.8" r="1" fill="#2F6FED" stroke="none"/><circle cx="12.4" cy="10.8" r="1" fill="#2F6FED" stroke="none"/><path d="M7.5 13.6h5"/><path d="M2 9.5v3"/><path d="M18 9.5v3"/></g>
+<text x="1315" y="2088" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="14" font-weight="700" fill="#1F2430" text-anchor="start">DraftGenerator</text>
+<text x="1315" y="2103" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10" font-weight="700" fill="#94A0AF" text-anchor="start" letter-spacing="0.4">GENERATING_DRAFT</text>
+<text x="1315" y="2122" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#6B7280" text-anchor="start">Genereert het volledige Nederlandstalige verslag volgens het</text>
+<text x="1315" y="2136.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#6B7280" text-anchor="start">gekozen sjabloon.</text>
+<rect x="1315" y="2142" width="148.20000000000002" height="20" rx="10" ry="10" fill="#DCEAFF" stroke="#93C5FD" stroke-width="1"/>
+<text x="1389.1" y="2156" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" fill="#1D4ED8" text-anchor="middle" letter-spacing="0.3">LLM · claude-opus-4-8</text>
+<rect x="1471.2" y="2142" width="73.80000000000001" height="20" rx="10" ry="10" fill="#FEE2E2" stroke="#FCA5A5" stroke-width="1"/>
+<text x="1508.1000000000001" y="2156" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" fill="#B91C1C" text-anchor="middle" letter-spacing="0.3">MANDATORY</text>
+<path d="M455,1958.5 L455,2129 L1255,2129" fill="none" stroke="#4B5563" stroke-width="2" marker-end="url(#arrow)" stroke-linejoin="round"/>
+<text x="210" y="2255" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="34" font-weight="800" fill="#EEF0F3" text-anchor="start">6</text>
+<text x="254" y="2246" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="15.5" font-weight="800" fill="#1F2430" text-anchor="start" letter-spacing="0.2">Geautomatiseerde kwaliteitscontrole</text>
+<line x1="254" y1="2256" x2="1720" y2="2256" stroke="#E5E7EB" stroke-width="1.5"/>
+<rect x="1255" y="2277" width="440" height="117.5" rx="14" ry="14" fill="#EAF1FF" stroke="#2F6FED" stroke-width="1.6"/>
+<circle cx="1290" cy="2305" r="15" fill="#FFFFFF" stroke="#2F6FED" stroke-width="1.4"/>
+<g transform="translate(1280.625,2295.625) scale(0.9375)" stroke="#2F6FED" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="6.5" width="12" height="9" rx="2.4"/><path d="M10 6.5V3.5"/><circle cx="10" cy="2.6" r="1"/><circle cx="7.6" cy="10.8" r="1" fill="#2F6FED" stroke="none"/><circle cx="12.4" cy="10.8" r="1" fill="#2F6FED" stroke="none"/><path d="M7.5 13.6h5"/><path d="M2 9.5v3"/><path d="M18 9.5v3"/></g>
+<text x="1315" y="2302" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="14" font-weight="700" fill="#1F2430" text-anchor="start">DraftQualityPrecheck</text>
+<text x="1315" y="2317" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10" font-weight="700" fill="#94A0AF" text-anchor="start" letter-spacing="0.4">DRAFT_QUALITY_PRECHECK</text>
+<text x="1315" y="2336" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#6B7280" text-anchor="start">Vast 5-punts checklist — adviserend, blokkeert nooit.</text>
+<rect x="1315" y="2341.5" width="135.8" height="20" rx="10" ry="10" fill="#DCEAFF" stroke="#93C5FD" stroke-width="1"/>
+<text x="1382.9" y="2355.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" fill="#1D4ED8" text-anchor="middle" letter-spacing="0.3">LLM · claude-opus-5</text>
+<rect x="1458.8" y="2341.5" width="67.6" height="20" rx="10" ry="10" fill="#FEF3C7" stroke="#FCD34D" stroke-width="1"/>
+<text x="1492.6" y="2355.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" fill="#92400E" text-anchor="middle" letter-spacing="0.3">ADVISORY</text>
+<path d="M1475,2195 L1475,2259 L1475,2259 L1475,2277" fill="none" stroke="#4B5563" stroke-width="2" marker-end="url(#arrow)" stroke-linejoin="round"/>
+<text x="210" y="2454.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="34" font-weight="800" fill="#EEF0F3" text-anchor="start">7</text>
+<text x="254" y="2445.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="15.5" font-weight="800" fill="#1F2430" text-anchor="start" letter-spacing="0.2">Conceptbeoordeling &amp; revisielus</text>
+<line x1="254" y1="2455.5" x2="1720" y2="2455.5" stroke="#E5E7EB" stroke-width="1.5"/>
+<rect x="235" y="2476.5" width="440" height="74.5" rx="14" ry="14" fill="#FFF3E6" stroke="#E8871E" stroke-width="1.6"/>
+<circle cx="270" cy="2504.5" r="15" fill="#FFFFFF" stroke="#E8871E" stroke-width="1.4"/>
+<g transform="translate(260.625,2495.125) scale(0.9375)" stroke="#E8871E" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5h6l3 3v11.5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-13.5a1 1 0 0 1 1-1z"/><path d="M12 2.5V6h3"/><path d="M7.3 10.2h5.4M7.3 12.7h5.4M7.3 15.2h3.4"/></g>
+<text x="295" y="2508.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="14" font-weight="700" fill="#1F2430" text-anchor="start">Concept beoordelen</text>
+<text x="295" y="2527.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#6B7280" text-anchor="start">Inclusief checklist. Versie-gecontroleerd.</text>
+<path d="M1475,2394.5 L1475,2458.5 L455,2458.5 L455,2476.5" fill="none" stroke="#4B5563" stroke-width="2" marker-end="url(#arrow)" stroke-linejoin="round"/>
+<polygon points="455,2581 595,2625 455,2669 315,2625" fill="#EAFBF1" stroke="#16A34A" stroke-width="1.8"/>
+<text x="455" y="2621" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="13" font-weight="700" fill="#0F7A38" text-anchor="middle">concept akkoord ?</text>
+<text x="455" y="2639" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10" font-weight="500" fill="#0F7A38" text-anchor="middle">menselijke beslissing</text>
+<path d="M455,2551 L455,2581" fill="none" stroke="#4B5563" stroke-width="2" marker-end="url(#arrow)" stroke-linejoin="round"/>
+<rect x="1255" y="2577" width="440" height="132" rx="14" ry="14" fill="#EAF1FF" stroke="#2F6FED" stroke-width="1.6"/>
+<circle cx="1290" cy="2605" r="15" fill="#FFFFFF" stroke="#2F6FED" stroke-width="1.4"/>
+<g transform="translate(1280.625,2595.625) scale(0.9375)" stroke="#2F6FED" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="6.5" width="12" height="9" rx="2.4"/><path d="M10 6.5V3.5"/><circle cx="10" cy="2.6" r="1"/><circle cx="7.6" cy="10.8" r="1" fill="#2F6FED" stroke="none"/><circle cx="12.4" cy="10.8" r="1" fill="#2F6FED" stroke="none"/><path d="M7.5 13.6h5"/><path d="M2 9.5v3"/><path d="M18 9.5v3"/></g>
+<text x="1315" y="2602" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="14" font-weight="700" fill="#1F2430" text-anchor="start">DraftReviser</text>
+<text x="1315" y="2617" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10" font-weight="700" fill="#94A0AF" text-anchor="start" letter-spacing="0.4">REVISING_DRAFT</text>
+<text x="1315" y="2636" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#6B7280" text-anchor="start">Voert de gevraagde wijziging echt door (herstructureren,</text>
+<text x="1315" y="2650.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#6B7280" text-anchor="start">verwijderen).</text>
+<rect x="1315" y="2656" width="148.20000000000002" height="20" rx="10" ry="10" fill="#DCEAFF" stroke="#93C5FD" stroke-width="1"/>
+<text x="1389.1" y="2670" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" fill="#1D4ED8" text-anchor="middle" letter-spacing="0.3">LLM · claude-opus-4-8</text>
+<rect x="1471.2" y="2656" width="73.80000000000001" height="20" rx="10" ry="10" fill="#FEE2E2" stroke="#FCA5A5" stroke-width="1"/>
+<text x="1508.1000000000001" y="2670" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" fill="#B91C1C" text-anchor="middle" letter-spacing="0.3">MANDATORY</text>
+<path d="M595,2625 L1255,2625" fill="none" stroke="#4B5563" stroke-width="2" marker-end="url(#arrow)" stroke-linejoin="round"/>
+<rect x="852.9" y="2596" width="144.20000000000002" height="22" rx="6" ry="6" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1"/>
+<text x="925" y="2611" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="600" fill="#6B7280" text-anchor="middle">wijzigingen aanvragen</text>
+<path d="M1695,2643 L1890,2643 L1890,2335.75 L1695,2335.75" fill="none" stroke="#2F6FED" stroke-width="2" stroke-dasharray="7 5" marker-end="url(#arrowLoopAi)" stroke-linejoin="round"/>
+<rect x="1824.1" y="2478.375" width="131.8" height="22" rx="6" ry="6" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1"/>
+<text x="1890" y="2493.375" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="600" fill="#6B7280" text-anchor="middle">opnieuw controleren</text>
+<text x="210" y="2769" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="34" font-weight="800" fill="#EEF0F3" text-anchor="start">8</text>
+<text x="254" y="2760" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="15.5" font-weight="800" fill="#1F2430" text-anchor="start" letter-spacing="0.2">Eindverslag renderen &amp; downloaden</text>
+<line x1="254" y1="2770" x2="1720" y2="2770" stroke="#E5E7EB" stroke-width="1.5"/>
+<rect x="1255" y="2791" width="440" height="132" rx="14" ry="14" fill="#EAF1FF" stroke="#2F6FED" stroke-width="1.6"/>
+<circle cx="1290" cy="2819" r="15" fill="#FFFFFF" stroke="#2F6FED" stroke-width="1.4"/>
+<g transform="translate(1280.625,2809.625) scale(0.9375)" stroke="#2F6FED" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="6.5" width="12" height="9" rx="2.4"/><path d="M10 6.5V3.5"/><circle cx="10" cy="2.6" r="1"/><circle cx="7.6" cy="10.8" r="1" fill="#2F6FED" stroke="none"/><circle cx="12.4" cy="10.8" r="1" fill="#2F6FED" stroke="none"/><path d="M7.5 13.6h5"/><path d="M2 9.5v3"/><path d="M18 9.5v3"/></g>
+<text x="1315" y="2816" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="14" font-weight="700" fill="#1F2430" text-anchor="start">FinalRenderer</text>
+<text x="1315" y="2831" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10" font-weight="700" fill="#94A0AF" text-anchor="start" letter-spacing="0.4">GENERATING_FINAL</text>
+<text x="1315" y="2850" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#6B7280" text-anchor="start">Zet het concept om naar een .docx-bestand via een vast</text>
+<text x="1315" y="2864.5" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#6B7280" text-anchor="start">sjabloon.</text>
+<rect x="1315" y="2870" width="111" height="20" rx="10" ry="10" fill="#F3F4F6" stroke="#D1D5DB" stroke-width="1"/>
+<text x="1370.5" y="2884" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" fill="#6B7280" text-anchor="middle" letter-spacing="0.3">Deterministisch</text>
+<rect x="1434" y="2870" width="42.8" height="20" rx="10" ry="10" fill="#E5E7EB" stroke="#D1D5DB" stroke-width="1"/>
+<text x="1455.4" y="2884" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" fill="#374151" text-anchor="middle" letter-spacing="0.3">AUTO</text>
+<path d="M455,2669 L455,2773 L1475,2773 L1475,2791" fill="none" stroke="#4B5563" stroke-width="2" marker-end="url(#arrow)" stroke-linejoin="round"/>
+<rect x="897" y="2746" width="76" height="22" rx="6" ry="6" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1"/>
+<text x="935" y="2761" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="600" fill="#6B7280" text-anchor="middle">goedkeuren</text>
+<rect x="235" y="2797" width="440" height="74.5" rx="14" ry="14" fill="#FFF3E6" stroke="#E8871E" stroke-width="1.6"/>
+<circle cx="270" cy="2825" r="15" fill="#FFFFFF" stroke="#E8871E" stroke-width="1.4"/>
+<g transform="translate(260.625,2815.625) scale(0.9375)" stroke="#E8871E" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3v10"/><path d="M5.5 9.5 10 14l4.5-4.5"/><path d="M3 15.5v1a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-1"/></g>
+<text x="295" y="2829" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="14" font-weight="700" fill="#1F2430" text-anchor="start">Gespreksverslag downloaden</text>
+<text x="295" y="2848" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#6B7280" text-anchor="start">“Uw gespreksverslag is gereed.” Status COMPLETED (eindstatus).</text>
+<path d="M1255,2857 L675,2857" fill="none" stroke="#4B5563" stroke-width="2" marker-end="url(#arrow)" stroke-linejoin="round"/>
+<rect x="914.6" y="2828" width="100.8" height="22" rx="6" ry="6" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1"/>
+<text x="965" y="2843" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="600" fill="#6B7280" text-anchor="middle">verslag gereed</text>
+<text x="210" y="2991" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="13" font-weight="800" fill="#1F2430" text-anchor="start">Generieke mechanismen (van toepassing op elke stap hierboven)</text>
+<rect x="210" y="3005" width="730" height="66" rx="12" ry="12" fill="#FAFAFB" stroke="#E5E7EB" stroke-width="1.2" stroke-dasharray="6 4"/>
+<circle cx="241" cy="3030" r="13" fill="#FFFFFF" stroke="#94A0AF" stroke-width="1.4"/>
+<g transform="translate(232.875,3021.875) scale(0.8125)" stroke="#6B7280" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="8"/><path d="M6.5 6.5l7 7M13.5 6.5l-7 7"/></g>
+<text x="262" y="3034" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="12" font-weight="700" fill="#1F2430" text-anchor="start">Foutafhandeling → FAILED</text>
+<text x="262" y="3050" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="400" fill="#6B7280" text-anchor="start">Elke stap die faalt zet de workflow op FAILED (herstelbaar). “Opnieuw proberen” start exact dezelfde stap opnieuw.</text>
+<rect x="960" y="3005" width="700" height="66" rx="12" ry="12" fill="#FAFAFB" stroke="#E5E7EB" stroke-width="1.2" stroke-dasharray="6 4"/>
+<circle cx="991" cy="3030" r="13" fill="#FFFFFF" stroke="#94A0AF" stroke-width="1.4"/>
+<g transform="translate(982.875,3021.875) scale(0.8125)" stroke="#6B7280" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.3 17.5 16H2.5z" stroke-linejoin="round"/><path d="M10 8.3v3.4"/><circle cx="10" cy="14" r="0.9" fill="#6B7280" stroke="none"/></g>
+<text x="1012" y="3034" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="12" font-weight="700" fill="#1F2430" text-anchor="start">Annuleren → CANCELLED</text>
+<text x="1012" y="3050" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="400" fill="#6B7280" text-anchor="start">Vanuit elke actieve stap kan de gebruiker annuleren. CANCELLED is een definitieve eindstatus.</text>
+<rect x="210" y="3121" width="1510" height="210" rx="16" ry="16" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1.4"/>
+<text x="236" y="3153" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="15" font-weight="800" fill="#1F2430" text-anchor="start">Legenda</text>
+<circle cx="251" cy="3198" r="15" fill="#FFFFFF" stroke="#E8871E" stroke-width="1.4"/>
+<g transform="translate(241.625,3188.625) scale(0.9375)" stroke="#E8871E" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="6.5" r="3.2"/><path d="M3.5 17c0-3.6 3-6 6.5-6s6.5 2.4 6.5 6"/></g>
+<text x="274" y="3195" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="12.5" font-weight="700" fill="#1F2430" text-anchor="start">Gebruiker</text>
+<text x="274" y="3210" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10" font-weight="400" fill="#6B7280" text-anchor="start">menselijke actie / scherm</text>
+<circle cx="621" cy="3198" r="15" fill="#FFFFFF" stroke="#64748B" stroke-width="1.4"/>
+<g transform="translate(611.625,3188.625) scale(0.9375)" stroke="#64748B" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="2.6"/><path d="M10 2.6v2.1M10 15.3v2.1M17.4 10h-2.1M4.7 10H2.6M15.2 4.8l-1.5 1.5M6.3 13.7l-1.5 1.5M15.2 15.2l-1.5-1.5M6.3 6.3 4.8 4.8"/></g>
+<text x="644" y="3195" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="12.5" font-weight="700" fill="#1F2430" text-anchor="start">Workflow Engine</text>
+<text x="644" y="3210" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10" font-weight="400" fill="#6B7280" text-anchor="start">beslismoment (policy/confidence)</text>
+<circle cx="991" cy="3198" r="15" fill="#FFFFFF" stroke="#2F6FED" stroke-width="1.4"/>
+<g transform="translate(981.625,3188.625) scale(0.9375)" stroke="#2F6FED" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="6.5" width="12" height="9" rx="2.4"/><path d="M10 6.5V3.5"/><circle cx="10" cy="2.6" r="1"/><circle cx="7.6" cy="10.8" r="1" fill="#2F6FED" stroke="none"/><circle cx="12.4" cy="10.8" r="1" fill="#2F6FED" stroke="none"/><path d="M7.5 13.6h5"/><path d="M2 9.5v3"/><path d="M18 9.5v3"/></g>
+<text x="1014" y="3195" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="12.5" font-weight="700" fill="#1F2430" text-anchor="start">AI Agent</text>
+<text x="1014" y="3210" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10" font-weight="400" fill="#6B7280" text-anchor="start">state + geregistreerde skill</text>
+<circle cx="1361" cy="3198" r="15" fill="#FFFFFF" stroke="#16A34A" stroke-width="1.4"/>
+<g transform="translate(1351.625,3188.625) scale(0.9375)" stroke="#16A34A" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="4.5" r="1.6"/><circle cx="5" cy="15.5" r="1.6"/><circle cx="15" cy="10" r="1.6"/><path d="M5 6.1v7.8"/><path d="M5 10h6.6"/><path d="M13.4 10 15 8.5"/></g>
+<text x="1384" y="3195" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="12.5" font-weight="700" fill="#1F2430" text-anchor="start">Beslismoment</text>
+<text x="1384" y="3210" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10" font-weight="400" fill="#6B7280" text-anchor="start">policy- of confidence-gestuurd</text>
+<line x1="236" y1="3251" x2="276" y2="3251" stroke="#4B5563" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="288" y="3255" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" font-weight="500" fill="#6B7280" text-anchor="start">Standaard workflow-stap (FSM-transitie)</text>
+<line x1="680" y1="3251" x2="720" y2="3251" stroke="#B45309" stroke-width="2" stroke-dasharray="7 5" marker-end="url(#arrowLoop)"/>
+<text x="732" y="3255" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="11" font-weight="500" fill="#6B7280" text-anchor="start">Terugkoppel-/herhaallus (retry, revisie, heropenen)</text>
+<rect x="236" y="3275" width="1458" height="1" fill="#E5E7EB"/>
+<rect x="236" y="3291" width="111" height="20" rx="10" ry="10" fill="#F3F4F6" stroke="#D1D5DB" stroke-width="1"/>
+<text x="291.5" y="3305" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" fill="#6B7280" text-anchor="middle" letter-spacing="0.3">STUB — geen LLM</text>
+<text x="236" y="3325" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="9.5" font-weight="400" fill="#94A0AF" text-anchor="start">deterministische logica</text>
+<rect x="373" y="3291" width="86.2" height="20" rx="10" ry="10" fill="#DCEAFF" stroke="#93C5FD" stroke-width="1"/>
+<text x="416.1" y="3305" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" fill="#1D4ED8" text-anchor="middle" letter-spacing="0.3">LLM · model</text>
+<text x="373" y="3325" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="9.5" font-weight="400" fill="#94A0AF" text-anchor="start">echte Anthropic API-call</text>
+<rect x="485.2" y="3291" width="73.80000000000001" height="20" rx="10" ry="10" fill="#FEE2E2" stroke="#FCA5A5" stroke-width="1"/>
+<text x="522.1" y="3305" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" fill="#B91C1C" text-anchor="middle" letter-spacing="0.3">MANDATORY</text>
+<text x="485.2" y="3325" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="9.5" font-weight="400" fill="#94A0AF" text-anchor="start">altijd menselijk checkpoint</text>
+<rect x="585" y="3291" width="67.6" height="20" rx="10" ry="10" fill="#FEF3C7" stroke="#FCD34D" stroke-width="1"/>
+<text x="618.8" y="3305" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" fill="#92400E" text-anchor="middle" letter-spacing="0.3">ADVISORY</text>
+<text x="585" y="3325" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="9.5" font-weight="400" fill="#94A0AF" text-anchor="start">nooit blokkerend</text>
+<rect x="678.6" y="3291" width="42.8" height="20" rx="10" ry="10" fill="#E5E7EB" stroke="#D1D5DB" stroke-width="1"/>
+<text x="700" y="3305" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" fill="#374151" text-anchor="middle" letter-spacing="0.3">AUTO</text>
+<text x="678.6" y="3325" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="9.5" font-weight="400" fill="#94A0AF" text-anchor="start">altijd automatisch</text>
+<text x="210" y="3367" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10" font-weight="400" fill="#94A0AF" text-anchor="start">Bron: reconstructie uit de broncode — backend/src/workflow/{states,transitions}.ts, backend/src/approval/{gateway,policyResolver}.ts, backend/prisma/seed.ts, backend/src/ai/skills/*.ts en frontend/src/routes/*. Niet gebaseerd op documentatie.</text>
+<text x="210" y="3385" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="10" font-weight="400" fill="#94A0AF" text-anchor="start">Gegenereerd 2026-07-27 · Transcript-Agent architectuurdiagram</text>
+</svg>

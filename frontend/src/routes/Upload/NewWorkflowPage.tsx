@@ -34,8 +34,8 @@ export function NewWorkflowPage({ currentUserId }: { currentUserId: string }) {
   return (
     <Layout title="Voor welke vergadering wil je een gespreksverslag genereren?" centered>
       <p className="page-intro">
-        Vul de naam of het onderwerp van de vergadering in. Vervolgens upload je het transcript en eventueel
-        aanvullende notities.
+        Vul de naam of het onderwerp van de vergadering in. Vervolgens geef je eventueel aanvullende context mee en
+        upload je het transcript.
       </p>
       <form onSubmit={handleSubmit} className="section">
         <div className="field">

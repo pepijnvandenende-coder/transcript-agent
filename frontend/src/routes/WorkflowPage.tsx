@@ -6,6 +6,7 @@ import { StatusBadge } from "../components/StatusBadge";
 import { isTransientState, SLOW_HINT_AFTER_MS, useWorkflow } from "../state/useWorkflow";
 import { ConfirmLowConfidenceScreen } from "./ConfirmLowConfidence/ConfirmLowConfidenceScreen";
 import { ConflictReviewScreen } from "./ConflictReview/ConflictReviewScreen";
+import { ContextStepScreen } from "./Context/ContextStepScreen";
 import { DraftReviewScreen } from "./DraftReview/DraftReviewScreen";
 import { FailedScreen } from "./Failed/FailedScreen";
 import { FinalDownloadScreen } from "./FinalDownload/FinalDownloadScreen";
@@ -18,6 +19,7 @@ type ScreenComponent = (props: ScreenProps) => JSX.Element;
 // The frontend's own small mirror of the backend's SKILL_ROUTING-style
 // per-state dispatch -- which screen owns which WorkflowState.
 const SCREENS: Partial<Record<WorkflowState, ScreenComponent>> = {
+  CONTEXT_INPUT: ContextStepScreen,
   CREATED: UploadScreen,
   TRANSCRIPT_UPLOADED: UploadScreen,
   VALIDATING_TRANSCRIPT: UploadScreen,

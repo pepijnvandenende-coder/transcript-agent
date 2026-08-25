@@ -1,11 +1,14 @@
 import type { z } from "zod";
 import {
   ConflictDetectorEnvelopeSchema,
+  CriteriaCoverageEnvelopeSchema,
   DraftGeneratorEnvelopeSchema,
   DraftQualityPrecheckEnvelopeSchema,
   DraftReviserEnvelopeSchema,
   FinalRendererEnvelopeSchema,
   MergerEnvelopeSchema,
+  OpenQuestionsEnvelopeSchema,
+  PostProcessingEnvelopeSchema,
   ReportTypeAdvisorEnvelopeSchema,
   TranscriptQualityEnvelopeSchema,
 } from "../ai/skillEnvelope";
@@ -27,6 +30,9 @@ const SCHEMAS: Record<string, z.ZodTypeAny> = {
   DraftQualityPrecheck: DraftQualityPrecheckEnvelopeSchema,
   DraftReviser: DraftReviserEnvelopeSchema,
   FinalRenderer: FinalRendererEnvelopeSchema,
+  PostProcessing: PostProcessingEnvelopeSchema,
+  OpenQuestionsAnalyzer: OpenQuestionsEnvelopeSchema,
+  CriteriaCoverageAnalyzer: CriteriaCoverageEnvelopeSchema,
 };
 
 export function checkSchema(skillName: string, rawOutput: unknown): SchemaCheckResult {

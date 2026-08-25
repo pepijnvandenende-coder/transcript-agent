@@ -13,6 +13,7 @@ export async function createDraftVersion(params: {
   subject: string;
   sections: Prisma.InputJsonValue;
   coverage?: number;
+  actionsPresent: boolean;
 }) {
   const latest = await prisma.draft.findFirst({
     where: { workflowId: params.workflowId },
@@ -32,6 +33,7 @@ export async function createDraftVersion(params: {
       subject: params.subject,
       sections: params.sections,
       coverage: params.coverage,
+      actionsPresent: params.actionsPresent,
     },
   });
 }

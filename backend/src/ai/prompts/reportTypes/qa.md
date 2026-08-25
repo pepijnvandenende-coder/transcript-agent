@@ -44,7 +44,16 @@ Acties en vervolgstappen (indien van toepassing)
 |-------|------------------|----------|--------|
 
 Openstaande vragen / onduidelijkheden (indien van toepassing)
-- Puntsgewijs
+
+Gebruik geen bullets. Iedere vraag/onduidelijkheid als eigen blok, met een witregel ertussen:
+
+Vraag 1:
+[duiding van de vraag of onduidelijkheid]
+
+Vraag 2:
+[duiding van de vraag of onduidelijkheid]
+
+Gebruik "Vraag 1:", "Vraag 2:", etc. alleen als er meerdere vragen/onduidelijkheden zijn; is er maar één, schrijf dan alleen de duiding, zonder label. Zijn er geen openstaande vragen of onduidelijkheden, schrijf dan: "Geen openstaande vragen of onduidelijkheden."
 
 Bijlagen/verwijzingen (indien van toepassing)
 - Verwijzing & kopie van gebruikt transcript

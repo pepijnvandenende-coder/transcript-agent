@@ -95,6 +95,7 @@ export async function runReviseDraftJob(job: JobRunnerInput): Promise<JobRunnerR
     subject: previousDraft.subject,
     sections: envelope.result.sections as unknown as Prisma.InputJsonValue,
     coverage: previousDraft.coverage ?? undefined,
+    actionsPresent: envelope.result.actions_present,
   });
 
   return { resultAiOutputId: aiOutputId };

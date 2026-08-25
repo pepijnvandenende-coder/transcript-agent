@@ -12,6 +12,14 @@ datasource db {
 // rather than redeclaring the same states, so the DB schema and the engine
 // can never drift out of sync with each other.
 enum WorkflowState {
+  // Phase 19: the explicit, mandatory-but-optional-content context step that
+  // now precedes transcript upload -- every workflow starts here, not at
+  // CREATED. Content is never required (a user can advance with nothing
+  // filled in), but the step itself can't be skipped: CREATED is only
+  // reachable via the "continue_to_transcript" edge below (see
+  // workflow/transitions.ts), so a workflow can never reach
+  // TRANSCRIPT_UPLOADED without having passed through here first.
+  CONTEXT_INPUT
   CREATED
   TRANSCRIPT_UPLOADED
   VALIDATING_TRANSCRIPT
@@ -27,6 +35,12 @@ enum WorkflowState {
   DRAFT_PENDING_REVIEW
   REVISING_DRAFT
   GENERATING_FINAL
+  // Phase 18: generic follow-up phase, entered after the final report is
+  // rendered and before COMPLETED. Fans out into whichever
+  // post_processing_skill_policies rows are active (see that model's
+  // comment) via a single job -- adding a new follow-up skill never adds a
+  // new WorkflowState.
+  POST_PROCESSING
   COMPLETED
   CANCELLED
   FAILED
@@ -47,6 +61,9 @@ enum JobType {
   DRAFT_QUALITY_PRECHECK
   REVISE_DRAFT
   RENDER_FINAL
+  // Phase 18: the single orchestrator job for the POST_PROCESSING state --
+  // see jobs/runners/postProcessingRunner.ts.
+  RUN_POST_PROCESSING
 }
 
 enum JobStatus {
@@ -100,6 +117,19 @@ enum ConflictStatus {
   RESOLVED
 }
 
+// Phase 18: one row per (workflow, active post_processing_skill_policies key)
+// pair written by jobs/runners/postProcessingRunner.ts. SKIPPED covers a
+// skill whose requiresContextType has no matching context_items row for this
+// workflow (e.g. CriteriaCoverage without a normenkader) -- distinct from
+// FAILED (the skill ran/attempted to run and errored or produced invalid
+// output), so the frontend can explain *why* a result is missing rather than
+// showing a bare error.
+enum PostProcessingResultStatus {
+  COMPLETED
+  FAILED
+  SKIPPED
+}
+
 model User {
   id        String   @id @default(uuid())
   name      String
@@ -107,12 +137,13 @@ model User {
   role      String
   createdAt DateTime @default(now()) @map("created_at")
 
-  createdWorkflows  Workflow[]        @relation("WorkflowCreatedBy")
-  stateTransitions  StateTransition[]
-  approvedAiOutputs AiOutput[]
-  uploadedTranscripts Transcript[]
-  uploadedNotes       Note[]
-  reviewFeedback      ReviewFeedback[]
+  createdWorkflows     Workflow[]        @relation("WorkflowCreatedBy")
+  stateTransitions     StateTransition[]
+  approvedAiOutputs    AiOutput[]
+  uploadedTranscripts  Transcript[]
+  uploadedNotes        Note[]
+  uploadedContextItems ContextItem[]
+  reviewFeedback       ReviewFeedback[]
 
   @@map("users")
 }
@@ -120,7 +151,7 @@ model User {
 model Workflow {
   id           String         @id @default(uuid())
   title        String
-  currentState WorkflowState  @default(CREATED) @map("current_state")
+  currentState WorkflowState  @default(CONTEXT_INPUT) @map("current_state")
   reportType   String?        @map("report_type")
   status       WorkflowStatus @default(ACTIVE)
   createdById  String         @map("created_by")
@@ -128,14 +159,16 @@ model Workflow {
   createdAt    DateTime       @default(now()) @map("created_at")
   updatedAt    DateTime       @updatedAt @map("updated_at")
 
-  stateTransitions StateTransition[]
-  jobs             Job[]
-  aiOutputs        AiOutput[]
-  transcripts      Transcript[]
-  notes            Note[]
-  approvalRequests ApprovalRequest[]
-  merges           Merge[]
-  conflicts        Conflict[]
+  stateTransitions      StateTransition[]
+  jobs                  Job[]
+  aiOutputs             AiOutput[]
+  transcripts           Transcript[]
+  notes                 Note[]
+  contextItems          ContextItem[]
+  approvalRequests      ApprovalRequest[]
+  postProcessingResults PostProcessingResult[]
+  merges                Merge[]
+  conflicts             Conflict[]
   reportTypeSuggestions ReportTypeSuggestion[]
   drafts                Draft[]
   draftPrechecks        DraftPrecheck[]
@@ -150,18 +183,18 @@ model Workflow {
 // exactly one row here. See backend/src/workflow/auditTrail.ts for the single
 // write path that guarantees this.
 model StateTransition {
-  id         String        @id @default(uuid())
-  workflowId String        @map("workflow_id")
-  workflow   Workflow      @relation(fields: [workflowId], references: [id])
+  id         String         @id @default(uuid())
+  workflowId String         @map("workflow_id")
+  workflow   Workflow       @relation(fields: [workflowId], references: [id])
   fromState  WorkflowState? @map("from_state")
-  toState    WorkflowState @map("to_state")
-  actorType  ActorType     @map("actor_type")
-  actorId    String?       @map("actor_id")
-  actor      User?         @relation(fields: [actorId], references: [id])
-  aiOutputId String?       @map("ai_output_id")
-  aiOutput   AiOutput?     @relation("TransitionAiOutput", fields: [aiOutputId], references: [id])
+  toState    WorkflowState  @map("to_state")
+  actorType  ActorType      @map("actor_type")
+  actorId    String?        @map("actor_id")
+  actor      User?          @relation(fields: [actorId], references: [id])
+  aiOutputId String?        @map("ai_output_id")
+  aiOutput   AiOutput?      @relation("TransitionAiOutput", fields: [aiOutputId], references: [id])
   metadata   Json?
-  occurredAt DateTime      @default(now()) @map("occurred_at")
+  occurredAt DateTime       @default(now()) @map("occurred_at")
 
   @@map("state_transitions")
 }
@@ -203,46 +236,47 @@ model Job {
 // Phase 1 logic (no AI calls exist yet), but created now so later phases
 // don't need a schema migration to introduce it.
 model AiOutput {
-  id                  String            @id @default(uuid())
-  jobId               String?           @map("job_id")
-  job                 Job?              @relation("AiOutputSourceJob", fields: [jobId], references: [id])
-  workflowId          String            @map("workflow_id")
-  workflow            Workflow          @relation(fields: [workflowId], references: [id])
-  skillName           String            @map("skill_name")
-  promptVersion       String            @map("prompt_version")
-  schemaVersion       String            @map("schema_version")
-  rawOutput           Json              @map("raw_output")
-  validationStatus    ValidationStatus  @map("validation_status")
-  validationErrors    Json?             @map("validation_errors")
-  confidenceScore     Float?            @map("confidence_score")
-  confidenceBreakdown Json?             @map("confidence_breakdown")
-  policyApplied       PolicyType?       @map("policy_applied")
-  approvalStatus      ApprovalStatus    @default(PENDING) @map("approval_status")
-  approvedById        String?           @map("approved_by")
-  approvedBy          User?             @relation(fields: [approvedById], references: [id])
-  approvedAt          DateTime?         @map("approved_at")
+  id                  String           @id @default(uuid())
+  jobId               String?          @map("job_id")
+  job                 Job?             @relation("AiOutputSourceJob", fields: [jobId], references: [id])
+  workflowId          String           @map("workflow_id")
+  workflow            Workflow         @relation(fields: [workflowId], references: [id])
+  skillName           String           @map("skill_name")
+  promptVersion       String           @map("prompt_version")
+  schemaVersion       String           @map("schema_version")
+  rawOutput           Json             @map("raw_output")
+  validationStatus    ValidationStatus @map("validation_status")
+  validationErrors    Json?            @map("validation_errors")
+  confidenceScore     Float?           @map("confidence_score")
+  confidenceBreakdown Json?            @map("confidence_breakdown")
+  policyApplied       PolicyType?      @map("policy_applied")
+  approvalStatus      ApprovalStatus   @default(PENDING) @map("approval_status")
+  approvedById        String?          @map("approved_by")
+  approvedBy          User?            @relation(fields: [approvedById], references: [id])
+  approvedAt          DateTime?        @map("approved_at")
   // approval_requests doesn't exist until a later phase; kept as a plain,
   // unconstrained column now per the approved architecture.
-  approvalRequestId   String?           @map("approval_request_id")
-  attemptNumber       Int               @default(1) @map("attempt_number")
-  retryOfAiOutputId   String?           @map("retry_of_ai_output_id")
-  retryOf             AiOutput?         @relation("AiOutputRetryChain", fields: [retryOfAiOutputId], references: [id])
-  retries              AiOutput[]        @relation("AiOutputRetryChain")
-  retryMode           RetryMode?        @map("retry_mode")
-  reviewerComment     String?           @map("reviewer_comment")
-  createdAt           DateTime          @default(now()) @map("created_at")
+  approvalRequestId   String?          @map("approval_request_id")
+  attemptNumber       Int              @default(1) @map("attempt_number")
+  retryOfAiOutputId   String?          @map("retry_of_ai_output_id")
+  retryOf             AiOutput?        @relation("AiOutputRetryChain", fields: [retryOfAiOutputId], references: [id])
+  retries             AiOutput[]       @relation("AiOutputRetryChain")
+  retryMode           RetryMode?       @map("retry_mode")
+  reviewerComment     String?          @map("reviewer_comment")
+  createdAt           DateTime         @default(now()) @map("created_at")
 
-  jobResultFor     Job?              @relation("JobResultOutput")
-  retriedByJobs    Job[]             @relation("JobRetrySource")
-  stateTransitions StateTransition[] @relation("TransitionAiOutput")
-  approvalRequests ApprovalRequest[]
-  inputs           AiOutputInput[]
-  merges           Merge[]
-  conflicts        Conflict[]
+  jobResultFor          Job?                   @relation("JobResultOutput")
+  retriedByJobs         Job[]                  @relation("JobRetrySource")
+  stateTransitions      StateTransition[]      @relation("TransitionAiOutput")
+  approvalRequests      ApprovalRequest[]
+  inputs                AiOutputInput[]
+  merges                Merge[]
+  conflicts             Conflict[]
   reportTypeSuggestions ReportTypeSuggestion[]
   drafts                Draft[]
   draftPrechecks        DraftPrecheck[]
   finalReports          FinalReport[]
+  postProcessingResults PostProcessingResult[]
 
   @@map("ai_outputs")
 }
@@ -280,6 +314,33 @@ model Note {
 
   @@unique([workflowId, version])
   @@map("notes")
+}
+
+// Phase 18: generic, catalog-driven additional context (PvA, normenkader,
+// vragenlijst, ... -- whatever context_type_policies rows are active),
+// deliberately separate from Note/notes rather than folding Notes into this
+// table: Notes already has its own first-class upload/versioning path
+// (Transcript's sibling since Phase 2) that many existing flows and tests
+// depend on unchanged, and duplicating that mechanism for one more type
+// would be pure churn. contextType is unconstrained (no FK to
+// ContextTypePolicy.key) -- same polymorphic-column pattern as
+// AiOutputInput.inputId -- so a context type can be added via a catalog row
+// alone, no migration. Versioned per (workflow, contextType): re-submitting
+// one type creates a new version without touching any other type's history,
+// unlike Note/Transcript's single global-latest version counter.
+model ContextItem {
+  id           String   @id @default(uuid())
+  workflowId   String   @map("workflow_id")
+  workflow     Workflow @relation(fields: [workflowId], references: [id])
+  contextType  String   @map("context_type")
+  version      Int
+  storageRef   String   @map("storage_ref")
+  uploadedById String   @map("uploaded_by")
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id])
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@unique([workflowId, contextType, version])
+  @@map("context_items")
 }
 
 // One row per open Human Approval Layer episode (Phase 2: confirm-only).
@@ -384,6 +445,28 @@ model ReportTypeSuggestion {
   @@map("report_type_suggestions")
 }
 
+// Phase 18: catalog of available additional-context types (PvA, normenkader,
+// vragenlijst, ...) -- deliberately NOT hardcoded to those three examples, so
+// which types are actually offered can be changed by editing catalog rows
+// (isActive/sortOrder), mirroring ReportTypePolicy's "one row = one option"
+// shape below. `instructionLabel` is the Dutch heading used both by the
+// frontend's context step and by draftGenerationRunner.ts when it labels
+// this type's content in the prompt sent to DraftGenerator -- kept separate
+// from `displayName` in case a shorter list label and a fuller prompt
+// heading ever need to diverge, though they start out identical.
+model ContextTypePolicy {
+  key              String   @id
+  displayName      String   @map("display_name")
+  description      String?
+  instructionLabel String   @map("instruction_label")
+  isActive         Boolean  @default(true) @map("is_active")
+  sortOrder        Int      @default(0) @map("sort_order")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@map("context_type_policies")
+}
+
 // Phase 6: catalog of available report generation policies. Stores only
 // metadata used for lookup/validation (English columns, per the codebase's
 // English-only convention) -- the actual Dutch prompt instructions live in
@@ -418,20 +501,28 @@ model ReportTypePolicy {
 // header metadata (title/attendees/date/subject) is modeled as its own
 // fields since it's structurally different from prose sections.
 model Draft {
-  id           String   @id @default(uuid())
-  workflowId   String   @map("workflow_id")
-  workflow     Workflow @relation(fields: [workflowId], references: [id])
-  version      Int
-  aiOutputId   String   @map("ai_output_id")
-  aiOutput     AiOutput @relation(fields: [aiOutputId], references: [id])
-  reportType   String   @map("report_type")
-  title        String
-  attendees    Json
-  date         String
-  subject      String
-  sections     Json
-  coverage     Float?
-  createdAt    DateTime @default(now()) @map("created_at")
+  id         String   @id @default(uuid())
+  workflowId String   @map("workflow_id")
+  workflow   Workflow @relation(fields: [workflowId], references: [id])
+  version    Int
+  aiOutputId String   @map("ai_output_id")
+  aiOutput   AiOutput @relation(fields: [aiOutputId], references: [id])
+  reportType String   @map("report_type")
+  title      String
+  attendees  Json
+  date       String
+  subject    String
+  sections   Json
+  coverage   Float?
+  // Single source of truth for "does the source actually contain concrete
+  // actions/vervolgstappen" -- set from the same DraftGenerator/DraftReviser
+  // LLM call that decided whether to include the "Acties en vervolgstappen"
+  // section in `sections`, so draftQualityPrecheckRunner.ts reads this
+  // instead of asking the LLM a second, independent question that could
+  // disagree with what was actually drafted. See draftGenerator.ts's
+  // ACTIONS_SECTION_HEADING/actions_present handling.
+  actionsPresent Boolean @default(false) @map("actions_present")
+  createdAt  DateTime @default(now()) @map("created_at")
 
   draftPrechecks DraftPrecheck[]
   reviewFeedback ReviewFeedback[]
@@ -505,6 +596,53 @@ model FinalReport {
   createdAt  DateTime @default(now()) @map("created_at")
 
   @@map("final_reports")
+}
+
+// Phase 18: catalog of available post-generation follow-up skills (open
+// questions, norm/criteria coverage, ...) -- same "one row = one option,
+// isActive toggles it, adding a row needs no code change" shape as
+// ReportTypePolicy/ContextTypePolicy above. `requiresContextType` is
+// optional: when set, jobs/runners/postProcessingRunner.ts skips this skill
+// (writing a SKIPPED PostProcessingResult, not a failure) unless a
+// context_items row of that type exists for the workflow -- e.g. norm
+// coverage is meaningless without a normenkader. `promptRef` resolves via
+// ai/prompts/postProcessingPromptLoader.ts, mirroring reportTypeLoader.ts.
+model PostProcessingSkillPolicy {
+  key                 String   @id
+  displayName         String   @map("display_name")
+  description         String?
+  promptRef           String   @map("prompt_ref")
+  requiresContextType String?  @map("requires_context_type")
+  isActive            Boolean  @default(true) @map("is_active")
+  sortOrder           Int      @default(0) @map("sort_order")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@map("post_processing_skill_policies")
+}
+
+// Phase 18: ONE generic result table for every follow-up skill (rather than
+// a dedicated open_questions/norm_coverage/... table per skill, per the
+// approved design) -- `skillKey` names the PostProcessingSkillPolicy row
+// that produced it (unconstrained, same polymorphic-column pattern as
+// ContextItem.contextType/AiOutputInput.inputId) and `resultJson` holds
+// whatever shape that skill's envelope.result actually is. Not versioned:
+// POST_PROCESSING runs at most once per workflow (COMPLETED has no re-entry
+// edge), same reasoning as FinalReport above. `aiOutputId` is nullable
+// because a SKIPPED skill never ran, so there is no governance row for it.
+model PostProcessingResult {
+  id           String                     @id @default(uuid())
+  workflowId   String                     @map("workflow_id")
+  workflow     Workflow                   @relation(fields: [workflowId], references: [id])
+  skillKey     String                     @map("skill_key")
+  status       PostProcessingResultStatus
+  aiOutputId   String?                    @map("ai_output_id")
+  aiOutput     AiOutput?                  @relation(fields: [aiOutputId], references: [id])
+  resultJson   Json?                      @map("result_json")
+  errorMessage String?                    @map("error_message")
+  createdAt    DateTime                   @default(now()) @map("created_at")
+
+  @@map("post_processing_results")
 }
 
 model ApprovalPolicy {

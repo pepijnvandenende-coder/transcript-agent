@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { ActorType } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../../src/api/app";
 import { prisma } from "../../src/persistence/prismaClient";
@@ -42,7 +43,13 @@ describe("POST /workflows/:id/transcript", () => {
 
   it("transitions the workflow from CREATED to TRANSCRIPT_UPLOADED", async () => {
     const workflow = await engine.createWorkflow({ title: "Upload Route Test", createdById: userId });
-    expect(workflow.currentState).toBe(WorkflowState.CREATED);
+    expect(workflow.currentState).toBe(WorkflowState.CONTEXT_INPUT);
+    // Phase 19: CREATED is only reachable after the mandatory context step.
+    await engine.transition({
+      workflowId: workflow.id,
+      trigger: { kind: "user_action", action: "continue_to_transcript" },
+      actor: { actorType: ActorType.USER, actorId: userId },
+    });
 
     const response = await fetch(`${baseUrl}/workflows/${workflow.id}/transcript`, {
       method: "POST",
@@ -61,10 +68,10 @@ describe("POST /workflows/:id/transcript", () => {
       where: { workflowId: workflow.id },
       orderBy: { occurredAt: "asc" },
     });
-    expect(history).toHaveLength(2);
-    expect(history[1].fromState).toBe(WorkflowState.CREATED);
-    expect(history[1].toState).toBe(WorkflowState.TRANSCRIPT_UPLOADED);
-    expect(history[1].actorId).toBe(userId);
+    expect(history).toHaveLength(3);
+    expect(history[2].fromState).toBe(WorkflowState.CREATED);
+    expect(history[2].toState).toBe(WorkflowState.TRANSCRIPT_UPLOADED);
+    expect(history[2].actorId).toBe(userId);
   });
 
   it("returns 404 for a nonexistent workflow", async () => {
@@ -78,6 +85,11 @@ describe("POST /workflows/:id/transcript", () => {
 
   it("rejects a second upload once the workflow has already left CREATED", async () => {
     const workflow = await engine.createWorkflow({ title: "Upload Route Test 2", createdById: userId });
+    await engine.transition({
+      workflowId: workflow.id,
+      trigger: { kind: "user_action", action: "continue_to_transcript" },
+      actor: { actorType: ActorType.USER, actorId: userId },
+    });
 
     const first = await fetch(`${baseUrl}/workflows/${workflow.id}/transcript`, {
       method: "POST",

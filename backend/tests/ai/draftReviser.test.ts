@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { loadReportTypePrompt } from "../../src/ai/prompts/reportTypeLoader";
 import { PROMPT_VERSION, run, SCHEMA_VERSION, SKILL_NAME } from "../../src/ai/skills/draftReviser";
+import { ACTIONS_PRESENCE_INSTRUCTIONS, ACTIONS_SECTION_HEADING } from "../../src/ai/skills/draftGenerator";
 import { DraftReviserEnvelopeSchema } from "../../src/ai/skillEnvelope";
 
 // Phase 16: DraftReviser now calls the real Anthropic API (see
@@ -17,9 +18,16 @@ function mockLlmResponse(output: {
   sections: Array<{ heading: string; content: string }>;
   changes_applied?: string[];
   unresolved_feedback?: string[];
+  actions_present?: boolean;
 }) {
   createMock.mockResolvedValue({
-    content: [{ type: "text", text: JSON.stringify({ changes_applied: [], unresolved_feedback: [], ...output }) }],
+    content: [
+      // Defaults to true, matching the sample fixture data below (most of
+      // which already carries an "Acties en vervolgstappen" section) --
+      // individual tests override it when they specifically exercise the
+      // false case.
+      { type: "text", text: JSON.stringify({ changes_applied: [], unresolved_feedback: [], actions_present: true, ...output }) },
+    ],
   });
 }
 
@@ -64,6 +72,7 @@ describe("draftReviser (real LLM, mocked client)", () => {
     const call = createMock.mock.calls[0][0];
     expect(call.model).toBe("claude-opus-4-8");
     expect(call.system).toContain(loadReportTypePrompt("thematic.md"));
+    expect(call.system).toContain(ACTIONS_PRESENCE_INSTRUCTIONS);
     expect(call.system).toContain("De feedback van de gebruiker heeft voorrang boven het standaardformat");
   });
 
@@ -167,5 +176,44 @@ describe("draftReviser (real LLM, mocked client)", () => {
     const envelope = await run(baseParams);
 
     expect(envelope.result.sections[0].content).toBe("• Eerste punt\n• Tweede punt");
+  });
+
+  describe("actions_present -- re-derived on every revision, same single source of truth as DraftGenerator", () => {
+    it("passes the model's actions_present judgment through to the result", async () => {
+      mockLlmResponse({ sections: [{ heading: "Samenvatting", content: "x" }], actions_present: false });
+
+      const envelope = await run(baseParams);
+
+      expect(envelope.result.actions_present).toBe(false);
+    });
+
+    // Defense-in-depth, same as draftGenerator.ts: a false actions_present
+    // always wins over the model's own sections content.
+    it("strips a fabricated actions section even when the model included one despite actions_present: false", async () => {
+      mockLlmResponse({
+        sections: [
+          { heading: "Samenvatting", content: "x" },
+          { heading: ACTIONS_SECTION_HEADING, content: "| Actie | Verantwoordelijke | Deadline | Status |\n|---|---|---|---|\n| Verzonnen actie | | | |" },
+        ],
+        actions_present: false,
+      });
+
+      const envelope = await run(baseParams);
+
+      expect(envelope.result.sections.some((section) => section.heading === ACTIONS_SECTION_HEADING)).toBe(false);
+    });
+
+    it("keeps an explicit human request to remove the actions section even when actions_present is true", async () => {
+      mockLlmResponse({
+        sections: [{ heading: "Samenvatting", content: "x" }],
+        actions_present: true,
+        changes_applied: ["Acties en vervolgstappen op verzoek verwijderd."],
+      });
+
+      const envelope = await run({ ...baseParams, feedbackItems: ["Verwijder acties en vervolgstappen"] });
+
+      expect(envelope.result.actions_present).toBe(true);
+      expect(envelope.result.sections.some((section) => section.heading === ACTIONS_SECTION_HEADING)).toBe(false);
+    });
   });
 });

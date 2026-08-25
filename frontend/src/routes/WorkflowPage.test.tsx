@@ -10,6 +10,7 @@ import { WorkflowPage } from "./WorkflowPage";
 // dedicated test file, so the screens are stubbed here to keep this test
 // isolated to WorkflowPage's own logic.
 vi.mock("./Upload/UploadScreen", () => ({ UploadScreen: () => <div>UploadScreenStub</div> }));
+vi.mock("./Context/ContextStepScreen", () => ({ ContextStepScreen: () => <div>ContextStepScreenStub</div> }));
 vi.mock("./ConfirmLowConfidence/ConfirmLowConfidenceScreen", () => ({
   ConfirmLowConfidenceScreen: () => <div>ConfirmLowConfidenceScreenStub</div>,
 }));
@@ -75,6 +76,7 @@ describe("routes/WorkflowPage", () => {
   });
 
   it.each([
+    ["CONTEXT_INPUT", "ContextStepScreenStub"],
     ["CREATED", "UploadScreenStub"],
     ["TRANSCRIPT_UPLOADED", "UploadScreenStub"],
     ["VALIDATING_TRANSCRIPT", "UploadScreenStub"],
@@ -150,7 +152,7 @@ describe("routes/WorkflowPage", () => {
     expect(container.querySelector("main")).toHaveClass("page-centered");
   });
 
-  it.each(["CREATED", "DRAFT_PENDING_REVIEW", "AWAITING_REPORT_TYPE_SELECTION"] as const)(
+  it.each(["CONTEXT_INPUT", "CREATED", "DRAFT_PENDING_REVIEW", "AWAITING_REPORT_TYPE_SELECTION"] as const)(
     "does not vertically center the normal-flow %s screen",
     (state) => {
       mockUseWorkflow({ workflow: workflow({ currentState: state }) });

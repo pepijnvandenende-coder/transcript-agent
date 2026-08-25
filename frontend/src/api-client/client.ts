@@ -7,6 +7,7 @@
 import { notifySessionInvalid } from "../state/sessionEvents";
 
 export type WorkflowState =
+  | "CONTEXT_INPUT"
   | "CREATED"
   | "TRANSCRIPT_UPLOADED"
   | "VALIDATING_TRANSCRIPT"
@@ -22,6 +23,7 @@ export type WorkflowState =
   | "DRAFT_PENDING_REVIEW"
   | "REVISING_DRAFT"
   | "GENERATING_FINAL"
+  | "POST_PROCESSING"
   | "COMPLETED"
   | "CANCELLED"
   | "FAILED";
@@ -106,6 +108,44 @@ export function uploadTranscript(workflowId: string, params: { uploadedById: str
 
 export function uploadNotes(workflowId: string, params: { uploadedById: string; content: string }) {
   return apiFetch(`/workflows/${workflowId}/notes`, { method: "POST", body: JSON.stringify(params) });
+}
+
+// Phase 18: the explicit context step, generalized beyond Notes -- see
+// backend/src/api/context.routes.ts. `contextType` must match an active
+// context-type-policies key.
+export interface ContextTypePolicy {
+  key: string;
+  displayName: string;
+  description: string | null;
+}
+
+export function getContextTypePolicies(): Promise<ContextTypePolicy[]> {
+  return apiFetch<ContextTypePolicy[]>("/context-type-policies");
+}
+
+export function uploadContext(
+  workflowId: string,
+  params: { uploadedById: string; contextType: string; content: string },
+) {
+  return apiFetch(`/workflows/${workflowId}/context`, { method: "POST", body: JSON.stringify(params) });
+}
+
+// Phase 19: the explicit context step's own two FSM edges -- CONTEXT_INPUT
+// -> CREATED (valid whether or not any context/notes were submitted) and its
+// mirror, used by the transcript screen's back control. See
+// backend/src/api/context.routes.ts.
+export function continueToTranscript(workflowId: string, params: { actorId: string }): Promise<Workflow> {
+  return apiFetch<Workflow>(`/workflows/${workflowId}/actions/continue-to-transcript`, {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+}
+
+export function backToContext(workflowId: string, params: { actorId: string }): Promise<Workflow> {
+  return apiFetch<Workflow>(`/workflows/${workflowId}/actions/back-to-context`, {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
 }
 
 export function submitForValidation(workflowId: string, params: { actorId: string }): Promise<Workflow> {
@@ -198,10 +238,12 @@ export interface DraftSection {
   content: string;
 }
 
+export type PrecheckStatus = "ok" | "info" | "warning" | "problem";
+
 export interface DraftPrecheck {
   id: string;
   overallScore: number;
-  checklist: Array<{ item: string; passed: boolean }>;
+  checklist: Array<{ item: string; status: PrecheckStatus; detail: string }>;
   blockingIssues: string[];
   recommendation: string;
   createdAt: string;
@@ -255,6 +297,27 @@ export interface FinalReport {
 
 export function getFinalReport(workflowId: string): Promise<FinalReport> {
   return apiFetch<FinalReport>(`/workflows/${workflowId}/final-report`);
+}
+
+// Phase 18: the generic post-generation follow-up phase's results -- see
+// backend/src/api/postProcessingResults.routes.ts. `resultJson`'s shape
+// depends on `skillKey` (open_questions vs. norm_coverage vs. whatever future
+// skill), so it stays loosely typed here; FinalDownloadScreen renders
+// per-skill known shapes and falls back generically for anything else, so a
+// newly added follow-up skill doesn't need a frontend change to show *something*.
+export interface PostProcessingResult {
+  id: string;
+  workflowId: string;
+  skillKey: string;
+  displayName: string;
+  status: "COMPLETED" | "FAILED" | "SKIPPED";
+  resultJson: unknown;
+  errorMessage: string | null;
+  createdAt: string;
+}
+
+export function getPostProcessingResults(workflowId: string): Promise<PostProcessingResult[]> {
+  return apiFetch<PostProcessingResult[]>(`/workflows/${workflowId}/post-processing-results`);
 }
 
 // Not a fetch call -- a plain URL for an <a href download> link. The backend

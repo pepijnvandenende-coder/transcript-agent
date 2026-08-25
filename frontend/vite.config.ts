@@ -34,6 +34,11 @@ export default defineConfig({
       // mounted at its own top-level path (see backend/src/api/app.ts), and
       // needs its own proxy entry here for the same reason /users does.
       "/report-type-policies": "http://localhost:3000",
+      // Phase 18: same reasoning as /report-type-policies above -- the
+      // context-type and post-processing-skill catalogs are also
+      // top-level, not workflow-scoped.
+      "/context-type-policies": "http://localhost:3000",
+      "/post-processing-policies": "http://localhost:3000",
     },
   },
   test: {

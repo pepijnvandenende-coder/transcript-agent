@@ -27,6 +27,7 @@ function draftGeneratorEnvelope(): DraftGeneratorEnvelope {
         { heading: "Notulen", content: "y" },
       ],
       coverage: 1,
+      actions_present: false,
     },
   };
 }

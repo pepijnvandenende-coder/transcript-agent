@@ -98,22 +98,29 @@ describe("routes/DraftReview/DraftReviewScreen", () => {
 
   // Phase 15 item 2: a passing item must never read as missing just because
   // it was bundled with something that failed -- every checklist item is
-  // rendered on its own, with its own ✓/⚠ marker.
-  it("renders every checklist item with its own pass/fail marker, with no raw score or English text", async () => {
+  // rendered on its own.
+  //
+  // Phase 19 item 1: a bare pass/fail marker couldn't distinguish "the
+  // source never mentioned this" from "this needs attention" -- checklist
+  // items now carry a PrecheckStatus (ok/info/warning/problem) plus a
+  // concrete `detail`, rendered as its own marker and explanation, with the
+  // final "Beoordeling: ..." assessment shown below the list.
+  it("renders every checklist item with its own status marker and detail, plus the final assessment", async () => {
     vi.spyOn(client, "getDrafts").mockResolvedValue([
       draft({
         precheck: {
           id: "p1",
           overallScore: 0.8,
           checklist: [
-            { item: "Deelnemers correct overgenomen", passed: true },
-            { item: "Datum ontbreekt", passed: false },
-            { item: "Onderwerp correct overgenomen", passed: true },
-            { item: "Structuur voldoet", passed: true },
-            { item: "Inhoud sluit aan op het transcript", passed: true },
+            { item: "Deelnemers", status: "ok", detail: "Deelnemers correct overgenomen." },
+            { item: "Datum", status: "info", detail: "Datum is niet vastgelegd in het transcript." },
+            { item: "Onderwerp", status: "ok", detail: "Onderwerp correct overgenomen." },
+            { item: "Structuur", status: "warning", detail: "De structuur is onvolledig: de sectie 'Samenvatting' ontbreekt of is leeg." },
+            { item: "Acties en vervolgstappen", status: "info", detail: "Geen concrete acties of vervolgstappen gevonden in het transcript." },
+            { item: "Inhoud", status: "ok", detail: "Inhoud sluit aan op het transcript." },
           ],
-          blockingIssues: ["Datum ontbreekt."],
-          recommendation: "1 aandachtspunt(en) gevonden -- controleer de checklist voor details.",
+          blockingIssues: ["De structuur is onvolledig: de sectie 'Samenvatting' ontbreekt of is leeg."],
+          recommendation: "Beoordeling: Controleer de gemarkeerde punten voordat je het verslag goedkeurt.",
           createdAt: "2026-01-01",
         },
       }),
@@ -122,30 +129,34 @@ describe("routes/DraftReview/DraftReviewScreen", () => {
     renderScreen();
 
     await screen.findByText("Kwaliteitscontrole");
-    expect(screen.getByText("✓ Deelnemers correct overgenomen")).toBeInTheDocument();
-    expect(screen.getByText("✓ Onderwerp correct overgenomen")).toBeInTheDocument();
-    expect(screen.getByText("✓ Structuur voldoet")).toBeInTheDocument();
-    expect(screen.getByText("✓ Inhoud sluit aan op het transcript")).toBeInTheDocument();
-    expect(screen.getByText("⚠ Datum ontbreekt")).toBeInTheDocument();
+    expect(screen.getByText("✓ Deelnemers -- Deelnemers correct overgenomen.")).toBeInTheDocument();
+    expect(screen.getByText("ℹ Datum -- Datum is niet vastgelegd in het transcript.")).toBeInTheDocument();
+    expect(screen.getByText("✓ Onderwerp -- Onderwerp correct overgenomen.")).toBeInTheDocument();
+    expect(
+      screen.getByText("⚠ Structuur -- De structuur is onvolledig: de sectie 'Samenvatting' ontbreekt of is leeg."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("ℹ Acties en vervolgstappen -- Geen concrete acties of vervolgstappen gevonden in het transcript."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("✓ Inhoud -- Inhoud sluit aan op het transcript.")).toBeInTheDocument();
+    expect(screen.getByText("Beoordeling: Controleer de gemarkeerde punten voordat je het verslag goedkeurt.")).toBeInTheDocument();
     expect(screen.queryByText(/%/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/aandachtspunt/)).not.toBeInTheDocument();
   });
 
-  it("renders every item with a ✓ marker when all checks pass", async () => {
+  // A missing/info item must never render with the warning marker -- this
+  // is the ticket's core complaint: "info missing from the source" must not
+  // look like a defect.
+  it("renders info items with the ℹ marker, never the ⚠ warning marker", async () => {
     vi.spyOn(client, "getDrafts").mockResolvedValue([
       draft({
         precheck: {
           id: "p1",
           overallScore: 1,
           checklist: [
-            { item: "Deelnemers correct overgenomen", passed: true },
-            { item: "Datum correct overgenomen", passed: true },
-            { item: "Onderwerp correct overgenomen", passed: true },
-            { item: "Structuur voldoet", passed: true },
-            { item: "Inhoud sluit aan op het transcript", passed: true },
+            { item: "Acties en vervolgstappen", status: "info", detail: "Geen concrete acties of vervolgstappen gevonden in het transcript." },
           ],
           blockingIssues: [],
-          recommendation: "Alle controles geslaagd -- geen aandachtspunten gevonden.",
+          recommendation: "Beoordeling: Het conceptverslag kan worden beoordeeld. Er zijn geen kritieke problemen gevonden.",
           createdAt: "2026-01-01",
         },
       }),
@@ -154,11 +165,41 @@ describe("routes/DraftReview/DraftReviewScreen", () => {
     renderScreen();
 
     await screen.findByText("Kwaliteitscontrole");
-    expect(screen.getByText("✓ Deelnemers correct overgenomen")).toBeInTheDocument();
-    expect(screen.getByText("✓ Datum correct overgenomen")).toBeInTheDocument();
-    expect(screen.getByText("✓ Onderwerp correct overgenomen")).toBeInTheDocument();
-    expect(screen.getByText("✓ Structuur voldoet")).toBeInTheDocument();
-    expect(screen.getByText("✓ Inhoud sluit aan op het transcript")).toBeInTheDocument();
+    expect(screen.getByText(/^ℹ Acties en vervolgstappen/)).toBeInTheDocument();
+    expect(screen.queryByText(/^⚠/)).not.toBeInTheDocument();
+  });
+
+  it("renders every item with a ✓ marker and a ready-for-review assessment when all checks pass", async () => {
+    vi.spyOn(client, "getDrafts").mockResolvedValue([
+      draft({
+        precheck: {
+          id: "p1",
+          overallScore: 1,
+          checklist: [
+            { item: "Deelnemers", status: "ok", detail: "Deelnemers correct overgenomen." },
+            { item: "Datum", status: "ok", detail: "Datum correct overgenomen." },
+            { item: "Onderwerp", status: "ok", detail: "Onderwerp correct overgenomen." },
+            { item: "Structuur", status: "ok", detail: "Structuur voldoet aan het verslagtype." },
+            { item: "Inhoud", status: "ok", detail: "Inhoud sluit aan op het transcript." },
+          ],
+          blockingIssues: [],
+          recommendation: "Beoordeling: Het conceptverslag kan worden beoordeeld. Er zijn geen kritieke problemen gevonden.",
+          createdAt: "2026-01-01",
+        },
+      }),
+    ]);
+
+    renderScreen();
+
+    await screen.findByText("Kwaliteitscontrole");
+    expect(screen.getByText("✓ Deelnemers -- Deelnemers correct overgenomen.")).toBeInTheDocument();
+    expect(screen.getByText("✓ Datum -- Datum correct overgenomen.")).toBeInTheDocument();
+    expect(screen.getByText("✓ Onderwerp -- Onderwerp correct overgenomen.")).toBeInTheDocument();
+    expect(screen.getByText("✓ Structuur -- Structuur voldoet aan het verslagtype.")).toBeInTheDocument();
+    expect(screen.getByText("✓ Inhoud -- Inhoud sluit aan op het transcript.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Beoordeling: Het conceptverslag kan worden beoordeeld. Er zijn geen kritieke problemen gevonden."),
+    ).toBeInTheDocument();
     expect(screen.queryByText("⚠", { exact: false })).not.toBeInTheDocument();
   });
 

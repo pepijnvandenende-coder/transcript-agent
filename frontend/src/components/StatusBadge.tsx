@@ -5,6 +5,7 @@ import type { WorkflowState } from "../api-client/client";
 // the same "show me the current state in plain language" display -- not a
 // speculative abstraction.
 const LABELS: Record<WorkflowState, string> = {
+  CONTEXT_INPUT: "Aanvullende context",
   CREATED: "Aangemaakt",
   TRANSCRIPT_UPLOADED: "Transcript geüpload",
   VALIDATING_TRANSCRIPT: "Transcript wordt gevalideerd...",
@@ -20,6 +21,7 @@ const LABELS: Record<WorkflowState, string> = {
   DRAFT_PENDING_REVIEW: "Concept wacht op review",
   REVISING_DRAFT: "Concept wordt herzien...",
   GENERATING_FINAL: "Eindrapport wordt gegenereerd...",
+  POST_PROCESSING: "Vervolgonderzoek wordt uitgevoerd...",
   COMPLETED: "Voltooid",
   CANCELLED: "Geannuleerd",
   FAILED: "Mislukt",
@@ -36,6 +38,7 @@ const PROCESSING_STATES = new Set<WorkflowState>([
   "DRAFT_QUALITY_PRECHECK",
   "REVISING_DRAFT",
   "GENERATING_FINAL",
+  "POST_PROCESSING",
 ]);
 const NEEDS_ATTENTION_STATES = new Set<WorkflowState>([
   "TRANSCRIPT_INSUFFICIENT",

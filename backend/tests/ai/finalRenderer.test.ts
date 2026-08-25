@@ -196,6 +196,42 @@ describe("ai/skills/finalRenderer", () => {
         expect(bulletParagraph).toMatch(/<w:spacing[^/]*w:after="\d+"/);
       });
 
+      // Formatting-only change: "Openstaande vragen / onduidelijkheden" is no
+      // longer a bullet list -- each question is its own block (label +
+      // duiding kept together, blank line to the next question), and that
+      // blank line must survive into the .docx as a real paragraph gap, not
+      // just in the frontend preview.
+      it("renders 'Openstaande vragen / onduidelijkheden' as one paragraph per question, with a blank-line gap between them", async () => {
+        const buffer = await finalRenderer.renderDocx({
+          title: "x",
+          attendees: [],
+          date: "2026-01-01",
+          subject: "x",
+          sections: [
+            {
+              heading: "Openstaande vragen / onduidelijkheden",
+              content: "Vraag 1:\nWat is de scope?\n\nVraag 2:\nWie is verantwoordelijk?",
+            },
+          ],
+        });
+        const xml = await documentXml(buffer);
+
+        // Not rendered as a bullet list.
+        expect(xml).not.toContain("w:numPr");
+
+        // Label and duiding of one question share a paragraph (a soft
+        // <w:br/> between them, not a full paragraph boundary).
+        const firstQuestionParagraph = xml.split("Vraag 1:")[1].split("</w:p>")[0];
+        expect(firstQuestionParagraph).toContain("Wat is de scope?");
+        expect(firstQuestionParagraph).toContain("<w:br/>");
+
+        // The two questions are separate paragraphs, each with spacing
+        // after -- the blank-line gap between them.
+        const firstParagraph = xml.split("Vraag 1:")[0] + "Vraag 1:" + xml.split("Vraag 1:")[1].split("</w:p>")[0];
+        expect(firstParagraph).toMatch(/<w:spacing[^/]*w:after="\d+"/);
+        expect(xml.indexOf("Vraag 2:")).toBeGreaterThan(xml.indexOf("Wat is de scope?"));
+      });
+
       it("still renders a real table (unaffected by the spacing changes)", async () => {
         const buffer = await finalRenderer.renderDocx({
           title: "x",

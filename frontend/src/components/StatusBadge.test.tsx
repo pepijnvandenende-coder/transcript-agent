@@ -5,6 +5,11 @@ import { StatusBadge } from "./StatusBadge";
 describe("components/StatusBadge", () => {
   afterEach(cleanup);
 
+  it("renders a plain-language label for CONTEXT_INPUT", () => {
+    render(<StatusBadge state="CONTEXT_INPUT" />);
+    expect(screen.getByText("Aanvullende context")).toBeInTheDocument();
+  });
+
   it("renders a plain-language label for a processing state", () => {
     render(<StatusBadge state="VALIDATING_TRANSCRIPT" />);
     expect(screen.getByText("Transcript wordt gevalideerd...")).toBeInTheDocument();
@@ -22,6 +27,7 @@ describe("components/StatusBadge", () => {
 
   it("renders a label for every WorkflowState value without throwing", () => {
     const allStates: Array<Parameters<typeof StatusBadge>[0]["state"]> = [
+      "CONTEXT_INPUT",
       "CREATED",
       "TRANSCRIPT_UPLOADED",
       "VALIDATING_TRANSCRIPT",

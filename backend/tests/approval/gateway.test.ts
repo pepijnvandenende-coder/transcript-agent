@@ -107,6 +107,7 @@ function draftGeneratorEnvelope(overrides: { confidence?: number } = {}): DraftG
         { heading: "Notulen", content: "y" },
       ],
       coverage: 0.7,
+      actions_present: false,
     },
   };
 }
@@ -122,8 +123,8 @@ function draftQualityPrecheckEnvelope(overrides: { confidence?: number } = {}): 
     result: {
       overall_score: 1,
       checklist: [
-        { item: "Samenvatting", passed: true },
-        { item: "Notulen", passed: true },
+        { item: "Samenvatting", status: "ok", detail: "Structuur voldoet aan het verslagtype." },
+        { item: "Inhoud", status: "ok", detail: "Inhoud sluit aan op het transcript." },
       ],
       blocking_issues: [],
       recommendation: "Looks complete.",
@@ -146,6 +147,7 @@ function draftReviserEnvelope(overrides: { confidence?: number } = {}): DraftRev
       ],
       changes_applied: ["Aanvulling naar aanleiding van reviewer-feedback: please expand"],
       unresolved_feedback: [],
+      actions_present: false,
     },
   };
 }
@@ -206,6 +208,11 @@ describe("approval/gateway", () => {
       update: { policyType: PolicyType.AUTO, confidenceThreshold: null },
       create: { skillName: FINAL_RENDERER_SKILL_NAME, policyType: PolicyType.AUTO },
     });
+    await prisma.approvalPolicy.upsert({
+      where: { skillName: "PostProcessing" },
+      update: { policyType: PolicyType.AUTO, confidenceThreshold: null },
+      create: { skillName: "PostProcessing", policyType: PolicyType.AUTO },
+    });
 
     const user = await prisma.user.create({
       data: { name: "Gateway Test User", email: `gateway-test-${randomUUID()}@example.com`, role: "reviewer" },
@@ -234,6 +241,11 @@ describe("approval/gateway", () => {
 
   async function workflowAtValidating(title: string) {
     const workflow = await engine.createWorkflow({ title, createdById: userId });
+    await engine.transition({
+      workflowId: workflow.id,
+      trigger: { kind: "user_action", action: "continue_to_transcript" },
+      actor: { actorType: ActorType.USER, actorId: userId },
+    });
     await engine.transition({
       workflowId: workflow.id,
       trigger: { kind: "user_action", action: "upload_transcript" },
@@ -931,7 +943,7 @@ describe("approval/gateway", () => {
     });
   });
 
-  describe("FinalRenderer routing (GENERATING_FINAL -> COMPLETED)", () => {
+  describe("FinalRenderer routing (GENERATING_FINAL -> POST_PROCESSING)", () => {
     async function workflowAtGeneratingFinal(title: string) {
       const workflow = await workflowAtValidating(title);
       await handleSkillOutput({
@@ -998,8 +1010,10 @@ describe("approval/gateway", () => {
       });
 
       const reloaded = await prisma.workflow.findUniqueOrThrow({ where: { id: workflow.id } });
-      expect(reloaded.currentState).toBe(WorkflowState.COMPLETED);
-      expect(reloaded.status).toBe("COMPLETED");
+      // POST_PROCESSING (Phase 18), not COMPLETED directly -- see
+      // workflow/transitions.ts. Not terminal, so workflow.status stays ACTIVE.
+      expect(reloaded.currentState).toBe(WorkflowState.POST_PROCESSING);
+      expect(reloaded.status).toBe("ACTIVE");
 
       const aiOutput = await prisma.aiOutput.findFirstOrThrow({
         where: { workflowId: workflow.id, skillName: FINAL_RENDERER_SKILL_NAME },
@@ -1026,7 +1040,7 @@ describe("approval/gateway", () => {
       });
 
       const reloaded = await prisma.workflow.findUniqueOrThrow({ where: { id: workflow.id } });
-      expect(reloaded.currentState).toBe(WorkflowState.COMPLETED);
+      expect(reloaded.currentState).toBe(WorkflowState.POST_PROCESSING);
 
       const aiOutput = await prisma.aiOutput.findFirstOrThrow({
         where: { workflowId: workflow.id, skillName: FINAL_RENDERER_SKILL_NAME },

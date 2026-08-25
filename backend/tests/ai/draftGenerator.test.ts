@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { loadReportTypePrompt } from "../../src/ai/prompts/reportTypeLoader";
-import { DATE_NOT_RECORDED, run, SCHEMA_VERSION, SKILL_NAME } from "../../src/ai/skills/draftGenerator";
+import {
+  ACTIONS_PRESENCE_INSTRUCTIONS,
+  ACTIONS_SECTION_HEADING,
+  DATE_NOT_RECORDED,
+  run,
+  SCHEMA_VERSION,
+  SKILL_NAME,
+} from "../../src/ai/skills/draftGenerator";
 import { DraftGeneratorEnvelopeSchema } from "../../src/ai/skillEnvelope";
 
 // Phase 11: DraftGenerator now calls the real Anthropic API (see
@@ -19,9 +26,10 @@ function mockLlmResponse(output: {
   attendees: string[];
   sections: Array<{ heading: string; content: string }>;
   conversation_date?: string | null;
+  actions_present?: boolean;
 }) {
   createMock.mockResolvedValue({
-    content: [{ type: "text", text: JSON.stringify({ conversation_date: null, ...output }) }],
+    content: [{ type: "text", text: JSON.stringify({ conversation_date: null, actions_present: false, ...output }) }],
   });
 }
 
@@ -54,7 +62,7 @@ describe("draftGenerator (real LLM, mocked client)", () => {
     expect(envelope.schema_version).toBe(SCHEMA_VERSION);
   });
 
-  it("calls the model with the report type policy's own prompt file as the system prompt", async () => {
+  it("calls the model with the report type policy's own prompt file, plus the actions-presence instructions, as the system prompt", async () => {
     mockLlmResponse({ title: "x", attendees: [], sections: [] });
 
     await run(baseParams);
@@ -62,7 +70,7 @@ describe("draftGenerator (real LLM, mocked client)", () => {
     expect(createMock).toHaveBeenCalledWith(
       expect.objectContaining({
         model: "claude-opus-4-8",
-        system: loadReportTypePrompt("thematic.md"),
+        system: `${loadReportTypePrompt("thematic.md")}\n\n${ACTIONS_PRESENCE_INSTRUCTIONS}`,
       }),
     );
   });
@@ -83,7 +91,9 @@ describe("draftGenerator (real LLM, mocked client)", () => {
 
     await run({ ...baseParams, policyKey: "qa", promptRef: "qa.md" });
 
-    expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ system: loadReportTypePrompt("qa.md") }));
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({ system: `${loadReportTypePrompt("qa.md")}\n\n${ACTIONS_PRESENCE_INSTRUCTIONS}` }),
+    );
   });
 
   it("parses the model's title, attendees, and sections into the result", async () => {
@@ -250,5 +260,85 @@ describe("draftGenerator (real LLM, mocked client)", () => {
     const envelope = await run(baseParams);
 
     expect(envelope.result.sections[0].content).toBe("Gewone lopende tekst zonder bullets.");
+  });
+
+  // Requirement: DraftGenerator's own actions_present judgment is the single
+  // source of truth DraftQualityPrecheck reads (draftQualityPrecheckRunner.ts
+  // passes draft.actionsPresent straight through) -- these tests cover
+  // scenarios A/B/D from the plan at the DraftGenerator level.
+  describe("actions_present -- single source of truth for the actions section", () => {
+    it("scenario A: reports actions_present false and has no actions section when the model found no concrete actions", async () => {
+      mockLlmResponse({
+        title: "x",
+        attendees: [],
+        sections: [{ heading: "Samenvatting", content: "Alleen een informatief gesprek, geen afspraken." }],
+        actions_present: false,
+      });
+
+      const envelope = await run(baseParams);
+
+      expect(envelope.result.actions_present).toBe(false);
+      expect(envelope.result.sections.some((section) => section.heading === ACTIONS_SECTION_HEADING)).toBe(false);
+    });
+
+    it("scenario B: reports actions_present true and keeps the actions section when the model found a concrete action", async () => {
+      mockLlmResponse({
+        title: "x",
+        attendees: [],
+        sections: [
+          { heading: "Samenvatting", content: "Kernpunten." },
+          {
+            heading: ACTIONS_SECTION_HEADING,
+            content: "| Actie | Verantwoordelijke | Deadline | Status |\n|---|---|---|---|\n| Jan stuurt het verslag na | Jan | | Open |",
+          },
+        ],
+        actions_present: true,
+      });
+
+      const envelope = await run(baseParams);
+
+      expect(envelope.result.actions_present).toBe(true);
+      const actionsSection = envelope.result.sections.find((section) => section.heading === ACTIONS_SECTION_HEADING);
+      expect(actionsSection?.content).toContain("Jan stuurt het verslag na");
+    });
+
+    // Defense-in-depth: even if the model's own boolean and its sections
+    // content disagree (a false actions_present but a hallucinated section
+    // anyway), the deterministic filter in draftGenerator.ts wins -- the
+    // model's prose is never trusted over its own stated judgment.
+    it("strips a fabricated actions section even when the model included one despite actions_present: false", async () => {
+      mockLlmResponse({
+        title: "x",
+        attendees: [],
+        sections: [
+          { heading: "Samenvatting", content: "Kernpunten." },
+          { heading: ACTIONS_SECTION_HEADING, content: "| Actie | Verantwoordelijke | Deadline | Status |\n|---|---|---|---|\n| Verzonnen actie | | | |" },
+        ],
+        actions_present: false,
+      });
+
+      const envelope = await run(baseParams);
+
+      expect(envelope.result.sections.some((section) => section.heading === ACTIONS_SECTION_HEADING)).toBe(false);
+    });
+
+    // Scenario D: a vague future thought is exactly the kind of case the
+    // appended instructions ask the model to judge as NOT a concrete action
+    // -- this test only confirms the code-side contract (actions_present
+    // false => no section survives), the judgment call itself is the real
+    // model's responsibility per ACTIONS_PRESENCE_INSTRUCTIONS.
+    it("scenario D: a mere possible future thought with actions_present false produces no actions section", async () => {
+      mockLlmResponse({
+        title: "x",
+        attendees: [],
+        sections: [{ heading: "Samenvatting", content: "We kunnen hier later nog eens naar kijken." }],
+        actions_present: false,
+      });
+
+      const envelope = await run(baseParams);
+
+      expect(envelope.result.actions_present).toBe(false);
+      expect(envelope.result.sections.some((section) => section.heading === ACTIONS_SECTION_HEADING)).toBe(false);
+    });
   });
 });

@@ -18,6 +18,7 @@ const TRANSIENT_STATES = new Set<WorkflowState>([
   "DRAFT_QUALITY_PRECHECK",
   "REVISING_DRAFT",
   "GENERATING_FINAL",
+  "POST_PROCESSING",
 ]);
 
 export function isTransientState(state: WorkflowState): boolean {

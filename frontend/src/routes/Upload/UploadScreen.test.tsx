@@ -42,9 +42,8 @@ describe("routes/Upload/UploadScreen", () => {
     expect(screen.getByRole("button", { name: /Uploaden en indienen/ })).toBeEnabled();
   });
 
-  it("uploads the transcript, then notes, then submits for validation in order, then calls onUpdated", async () => {
+  it("uploads the transcript, then submits for validation, then calls onUpdated", async () => {
     const uploadTranscriptMock = vi.spyOn(client, "uploadTranscript").mockResolvedValue({});
-    const uploadNotesMock = vi.spyOn(client, "uploadNotes").mockResolvedValue({});
     const submitForValidationMock = vi
       .spyOn(client, "submitForValidation")
       .mockResolvedValue(workflow({ currentState: "VALIDATING_TRANSCRIPT" }));
@@ -53,7 +52,6 @@ describe("routes/Upload/UploadScreen", () => {
     renderScreen({ onUpdated });
 
     fireEvent.change(screen.getByLabelText("Transcript"), { target: { value: "Some transcript content" } });
-    fireEvent.change(screen.getByLabelText("Notities (optioneel)"), { target: { value: "Some notes" } });
     fireEvent.click(screen.getByRole("button", { name: /Uploaden en indienen/ }));
 
     await waitFor(() => {
@@ -61,28 +59,11 @@ describe("routes/Upload/UploadScreen", () => {
     });
 
     expect(uploadTranscriptMock).toHaveBeenCalledWith("w1", { uploadedById: "u1", content: "Some transcript content" });
-    expect(uploadNotesMock).toHaveBeenCalledWith("w1", { uploadedById: "u1", content: "Some notes" });
     expect(submitForValidationMock).toHaveBeenCalledWith("w1", { actorId: "u1" });
 
     const transcriptOrder = uploadTranscriptMock.mock.invocationCallOrder[0];
-    const notesOrder = uploadNotesMock.mock.invocationCallOrder[0];
     const submitOrder = submitForValidationMock.mock.invocationCallOrder[0];
-    expect(transcriptOrder).toBeLessThan(notesOrder);
-    expect(notesOrder).toBeLessThan(submitOrder);
-  });
-
-  it("skips notes upload when the notes field is left empty", async () => {
-    vi.spyOn(client, "uploadTranscript").mockResolvedValue({});
-    const uploadNotesMock = vi.spyOn(client, "uploadNotes").mockResolvedValue({});
-    vi.spyOn(client, "submitForValidation").mockResolvedValue(workflow({ currentState: "VALIDATING_TRANSCRIPT" }));
-
-    renderScreen();
-
-    fireEvent.change(screen.getByLabelText("Transcript"), { target: { value: "Some transcript content" } });
-    fireEvent.click(screen.getByRole("button", { name: /Uploaden en indienen/ }));
-
-    await waitFor(() => expect(client.submitForValidation).toHaveBeenCalled());
-    expect(uploadNotesMock).not.toHaveBeenCalled();
+    expect(transcriptOrder).toBeLessThan(submitOrder);
   });
 
   it("in the TRANSCRIPT_UPLOADED resumption state, submits for validation without re-uploading", async () => {
@@ -131,8 +112,25 @@ describe("routes/Upload/UploadScreen", () => {
     expect(screen.getByLabelText("Transcript")).toHaveValue("");
   });
 
-  it("has a back control that does not call the backend", () => {
-    renderScreen();
+  // Phase 19: CREATED is only reachable via the context step's
+  // continue_to_transcript edge -- "back" here is a real back_to_context
+  // transition (BackOrCancel mode="back-to-context"), not a local navigate().
+  it("has a back-to-context control that moves the workflow back to CONTEXT_INPUT", async () => {
+    const backToContextMock = vi
+      .spyOn(client, "backToContext")
+      .mockResolvedValue(workflow({ currentState: "CONTEXT_INPUT" }));
+    const onUpdated = vi.fn();
+
+    renderScreen({ onUpdated });
+
+    fireEvent.click(screen.getByRole("button", { name: "Terug naar aanvullende context" }));
+
+    await waitFor(() => expect(backToContextMock).toHaveBeenCalledWith("w1", { actorId: "u1" }));
+    expect(onUpdated).toHaveBeenCalledWith(expect.objectContaining({ currentState: "CONTEXT_INPUT" }));
+  });
+
+  it("the TRANSCRIPT_UPLOADED resumption screen still uses the plain local back control", () => {
+    renderScreen({ workflow: workflow({ currentState: "TRANSCRIPT_UPLOADED" }) });
     expect(screen.getByRole("button", { name: "Terug naar begin" })).toBeInTheDocument();
   });
 });

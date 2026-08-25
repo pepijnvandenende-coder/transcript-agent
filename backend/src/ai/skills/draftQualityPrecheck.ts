@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import type { DraftQualityPrecheckEnvelope, DraftSection } from "../skillEnvelope";
+import type { DraftQualityPrecheckEnvelope, DraftSection, PrecheckStatus } from "../skillEnvelope";
 import type { StructureCheckItem } from "../../approval/reportStructureValidator";
 import { getAnthropicClient } from "../anthropicClient";
-import { DATE_NOT_RECORDED } from "./draftGenerator";
+import { ACTIONS_SECTION_HEADING, DATE_NOT_RECORDED } from "./draftGenerator";
 
 // Phase 14: replaces the Phase 7 deterministic stub with a real Anthropic
 // API call for the content-judgment checks a deterministic check can never
@@ -11,70 +11,194 @@ import { DATE_NOT_RECORDED } from "./draftGenerator";
 // misleading -- a single bundled "attendees/date/subject" item failed
 // (and was shown as "missing") the moment the model doubted just one of the
 // three, even when the other two were genuinely correct. Reworked into four
-// named boolean judgments (schema/code change only -- draftQualityPrecheck.md's
-// *substance* is unchanged, only its output-format description) merged with
-// the structural check into a fixed five-item Dutch checklist, so passing
-// items show up as passing instead of being silently absent or bundled into
-// a failing group. Stays ADVISORY_ONLY (approval/policyResolver.ts never
-// consults this skill's confidence for routing), so this never blocks the
-// workflow.
+// named boolean judgments merged with the structural check into a fixed
+// five-item Dutch checklist, so passing items show up as passing instead of
+// being silently absent or bundled into a failing group.
+//
+// Phase 19 item 1: a bare pass/fail marker left the reviewer guessing what
+// "Structuur onvolledig" actually meant, and made "the transcript never
+// mentioned this" look identical to "the AI got this wrong". Every item now
+// carries a PrecheckStatus (ok/info/warning/problem) plus a concrete `detail`
+// string, and the LLM call returns a `reason` alongside each boolean instead
+// of one freeform `issues` array, so that reason can be shown directly next
+// to the item it explains. Stays ADVISORY_ONLY (approval/policyResolver.ts
+// never consults this skill's confidence for routing), so this never blocks
+// the workflow.
 export const SKILL_NAME = "DraftQualityPrecheck";
-export const SCHEMA_VERSION = "1.0.0";
-export const PROMPT_VERSION = "llm-2";
+export const SCHEMA_VERSION = "1.1.0";
+export const PROMPT_VERSION = "llm-3";
 
 const MODEL = "claude-opus-5";
 const MAX_TOKENS = 1024;
 
 const SYSTEM_PROMPT = readFileSync(path.join(__dirname, "../prompts/draftQualityPrecheck.md"), "utf8");
 
-const OUTPUT_SCHEMA = {
+const FIELD_JUDGMENT_SCHEMA = {
   type: "object",
   properties: {
-    attendees_correct: { type: "boolean" },
-    date_correct: { type: "boolean" },
-    subject_correct: { type: "boolean" },
-    factually_grounded: { type: "boolean" },
-    issues: { type: "array", items: { type: "string" } },
+    correct: { type: "boolean" },
+    reason: { type: "string" },
   },
-  required: ["attendees_correct", "date_correct", "subject_correct", "factually_grounded", "issues"],
+  required: ["correct", "reason"],
   additionalProperties: false,
 } as const;
 
-interface DraftQualityPrecheckLlmOutput {
-  attendees_correct: boolean;
-  date_correct: boolean;
-  subject_correct: boolean;
-  factually_grounded: boolean;
-  issues: string[];
+const OUTPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    attendees: FIELD_JUDGMENT_SCHEMA,
+    date: FIELD_JUDGMENT_SCHEMA,
+    subject: FIELD_JUDGMENT_SCHEMA,
+    factually_grounded: {
+      type: "object",
+      properties: {
+        grounded: { type: "boolean" },
+        reason: { type: "string" },
+      },
+      required: ["grounded", "reason"],
+      additionalProperties: false,
+    },
+  },
+  required: ["attendees", "date", "subject", "factually_grounded"],
+  additionalProperties: false,
+} as const;
+
+interface FieldJudgment {
+  correct: boolean;
+  reason: string;
 }
 
-type ChecklistItem = { item: string; passed: boolean };
+interface DraftQualityPrecheckLlmOutput {
+  attendees: FieldJudgment;
+  date: FieldJudgment;
+  subject: FieldJudgment;
+  factually_grounded: { grounded: boolean; reason: string };
+}
 
+const NO_LLM_OUTPUT: DraftQualityPrecheckLlmOutput = {
+  attendees: { correct: false, reason: "" },
+  date: { correct: false, reason: "" },
+  subject: { correct: false, reason: "" },
+  factually_grounded: { grounded: false, reason: "" },
+};
+
+type ChecklistItem = { item: string; status: PrecheckStatus; detail: string };
+
+// `info` items reflect information that simply isn't in the source -- never
+// a defect, so they're excluded from both sides of the score, not counted
+// as a pass.
 function scoreOf(checklist: ChecklistItem[]): number {
-  return checklist.length === 0 ? 0 : checklist.filter((entry) => entry.passed).length / checklist.length;
+  const relevant = checklist.filter((entry) => entry.status !== "info");
+  if (relevant.length === 0) return 1;
+  return relevant.filter((entry) => entry.status === "ok").length / relevant.length;
 }
 
 function structuralItemPassed(items: StructureCheckItem[], label: string): boolean {
   return items.find((item) => item.item === label)?.passed ?? false;
 }
 
+// Human-readable reason a given structural item is required, keyed by the
+// exact StructureCheckItem label reportStructureValidator.ts produces for
+// it. Anything not listed here (a catalog-defined requiredSections heading)
+// falls back to a generic-but-still-specific phrase built from its own
+// label, so a new report type never needs an entry added here.
+const STRUCTURE_ITEM_REASONS: Record<string, string> = {
+  Titel: "de titel ontbreekt",
+  "Thematische notulen": "er zijn onvoldoende thematische secties gevonden om de indeling compleet te maken",
+  "Vraag/antwoord-secties": "er zijn onvoldoende vraag-en-antwoordsecties gevonden om de indeling compleet te maken",
+};
+
+function describeMissingStructure(failed: StructureCheckItem[]): string {
+  return failed
+    .map((item) => STRUCTURE_ITEM_REASONS[item.item] ?? `de sectie '${item.item}' ontbreekt of is leeg`)
+    .join("; ");
+}
+
 // Present-but-wrong and absent-entirely are different problems for a
-// reviewer -- the label itself communicates which one it is, rather than a
-// fixed label plus a separately-worded reason.
-function fieldChecklistItem(
-  present: boolean,
-  correct: boolean,
-  labels: { missing: string; correct: string; incorrect: string },
-): ChecklistItem {
-  if (!present) return { item: labels.missing, passed: false };
-  return correct ? { item: labels.correct, passed: true } : { item: labels.incorrect, passed: false };
+// reviewer, and "absent because the source never said" is not a problem at
+// all -- each gets its own status/detail rather than a fixed label plus a
+// separately-worded reason.
+function fieldChecklistItem(params: {
+  itemLabel: string;
+  present: boolean;
+  correct: boolean;
+  missingStatus: PrecheckStatus;
+  missingDetail: string;
+  okDetail: string;
+  warningDetail: string;
+}): ChecklistItem {
+  const { itemLabel, present, correct, missingStatus, missingDetail, okDetail, warningDetail } = params;
+  if (!present) return { item: itemLabel, status: missingStatus, detail: missingDetail };
+  return correct
+    ? { item: itemLabel, status: "ok", detail: okDetail }
+    : { item: itemLabel, status: "warning", detail: warningDetail };
 }
 
 // Rolled up from every checkDraftStructure() item that isn't already
 // surfaced as its own checklist entry (Aanwezige deelnemers/Datum/Onderwerp)
-// -- Titel, Samenvatting, and the bodyContentRule item. Shown as one summary
-// line rather than exposing every granular structural label.
+// -- Titel, Samenvatting, and the bodyContentRule item. Shown as one
+// "Structuur" line whose `detail` always names exactly what's missing,
+// rather than a bare "onvolledig".
 const OWN_CHECKLIST_LABELS = new Set(["Aanwezige deelnemers", "Datum", "Onderwerp"]);
+
+function buildStructureItem(structuralItems: StructureCheckItem[]): ChecklistItem {
+  const remaining = structuralItems.filter((item) => !OWN_CHECKLIST_LABELS.has(item.item));
+  const failed = remaining.filter((item) => !item.passed);
+  if (failed.length === 0) {
+    return { item: "Structuur", status: "ok", detail: "Structuur voldoet aan het verslagtype." };
+  }
+  return {
+    item: "Structuur",
+    status: "warning",
+    detail: `De structuur is onvolledig: ${describeMissingStructure(failed)}.`,
+  };
+}
+
+// Optional (never blocking) per report_type_policies -- only shown when the
+// resolved policy actually lists it, so this never becomes a generic warning
+// unsupported by the catalog data (Requirement: no unsupported warnings).
+function buildActionsItem(params: {
+  actionsSectionIsOptional: boolean;
+  sections: DraftSection[];
+  actionsPresentInSource: boolean;
+}): ChecklistItem | null {
+  const { actionsSectionIsOptional, sections, actionsPresentInSource } = params;
+  if (!actionsSectionIsOptional) return null;
+
+  if (!actionsPresentInSource) {
+    return {
+      item: ACTIONS_SECTION_HEADING,
+      status: "info",
+      detail: "Geen concrete acties of vervolgstappen gevonden in het transcript.",
+    };
+  }
+
+  const sectionPresent = sections.some(
+    (section) => section.heading === ACTIONS_SECTION_HEADING && section.content.trim().length > 0,
+  );
+  if (sectionPresent) {
+    return { item: ACTIONS_SECTION_HEADING, status: "ok", detail: "Acties en vervolgstappen correct opgenomen." };
+  }
+  return {
+    item: ACTIONS_SECTION_HEADING,
+    status: "warning",
+    detail: "De sectie 'Acties en vervolgstappen' ontbreekt, terwijl uit het transcript wel concrete acties naar voren komen.",
+  };
+}
+
+function buildRecommendation(checklist: ChecklistItem[]): string {
+  if (checklist.some((entry) => entry.status === "problem")) {
+    return "Beoordeling: Het conceptverslag bevat een probleem en is nog niet klaar voor beoordeling.";
+  }
+  if (checklist.some((entry) => entry.status === "warning")) {
+    return "Beoordeling: Controleer de gemarkeerde punten voordat je het verslag goedkeurt.";
+  }
+  return "Beoordeling: Het conceptverslag kan worden beoordeeld. Er zijn geen kritieke problemen gevonden.";
+}
+
+function attentionDetails(checklist: ChecklistItem[]): string[] {
+  return checklist.filter((entry) => entry.status === "warning" || entry.status === "problem").map((entry) => entry.detail);
+}
 
 export async function run(params: {
   title: string;
@@ -84,8 +208,16 @@ export async function run(params: {
   sections: DraftSection[];
   sourceText: string;
   structuralItems: StructureCheckItem[];
+  optionalSections?: string[];
+  // Single source of truth for "does the source contain concrete actions",
+  // set by DraftGenerator/DraftReviser (see draftGenerator.ts's
+  // ACTIONS_PRESENCE_INSTRUCTIONS and prisma/schema.prisma's
+  // Draft.actionsPresent) and passed straight through here -- this skill no
+  // longer asks the LLM the same question a second time, which is what used
+  // to let the precheck and the drafted section disagree.
+  actionsPresentInSource: boolean;
 }): Promise<DraftQualityPrecheckEnvelope> {
-  const { title, attendees, date, subject, sections, sourceText, structuralItems } = params;
+  const { title, attendees, date, subject, sections, sourceText, structuralItems, optionalSections = [], actionsPresentInSource } = params;
 
   const attendeesPresent = structuralItemPassed(structuralItems, "Aanwezige deelnemers");
   // "Datum" can structurally pass while still holding the DraftGenerator
@@ -94,39 +226,44 @@ export async function run(params: {
   // not a real, judgeable date for this precheck.
   const datePresent = structuralItemPassed(structuralItems, "Datum") && date !== DATE_NOT_RECORDED;
   const subjectPresent = structuralItemPassed(structuralItems, "Onderwerp");
-
-  const remainingStructuralItems = structuralItems.filter((item) => !OWN_CHECKLIST_LABELS.has(item.item));
-  const structureOk = remainingStructuralItems.every((item) => item.passed);
-  const structureItem: ChecklistItem = { item: structureOk ? "Structuur voldoet" : "Structuur onvolledig", passed: structureOk };
-
-  const presenceIssues = [
-    ...(attendeesPresent ? [] : ["Deelnemers ontbreken."]),
-    ...(datePresent ? [] : ["Datum ontbreekt."]),
-    ...(subjectPresent ? [] : ["Onderwerp ontbreekt."]),
-    ...(structureOk ? [] : ["Structuur van het conceptverslag is onvolledig."]),
-  ];
+  const structureItem = buildStructureItem(structuralItems);
+  const actionsSectionIsOptional = optionalSections.includes(ACTIONS_SECTION_HEADING);
 
   // Nothing to meaningfully judge content-wise for a draft with no body at
   // all -- skip the LLM call, report what's already known.
   if (sections.length === 0) {
+    const actionsItem = buildActionsItem({ actionsSectionIsOptional, sections, actionsPresentInSource });
     const checklist: ChecklistItem[] = [
-      fieldChecklistItem(attendeesPresent, true, {
-        missing: "Deelnemers ontbreken",
-        correct: "Deelnemers correct overgenomen",
-        incorrect: "Deelnemers wijken af van het transcript",
+      fieldChecklistItem({
+        itemLabel: "Deelnemers",
+        present: attendeesPresent,
+        correct: true,
+        missingStatus: "info",
+        missingDetail: "Geen deelnemers gevonden in het transcript.",
+        okDetail: "Deelnemers correct overgenomen.",
+        warningDetail: "",
       }),
-      fieldChecklistItem(datePresent, true, {
-        missing: "Datum ontbreekt",
-        correct: "Datum correct overgenomen",
-        incorrect: "Datum wijkt af van het transcript",
+      fieldChecklistItem({
+        itemLabel: "Datum",
+        present: datePresent,
+        correct: true,
+        missingStatus: "info",
+        missingDetail: "Datum is niet vastgelegd in het transcript.",
+        okDetail: "Datum correct overgenomen.",
+        warningDetail: "",
       }),
-      fieldChecklistItem(subjectPresent, true, {
-        missing: "Onderwerp ontbreekt",
-        correct: "Onderwerp correct overgenomen",
-        incorrect: "Onderwerp wijkt af van het transcript",
+      fieldChecklistItem({
+        itemLabel: "Onderwerp",
+        present: subjectPresent,
+        correct: true,
+        missingStatus: "warning",
+        missingDetail: "Onderwerp ontbreekt -- controleer de workflowgegevens.",
+        okDetail: "Onderwerp correct overgenomen.",
+        warningDetail: "",
       }),
       structureItem,
-      { item: "Inhoud bevat niet-onderbouwde informatie", passed: false },
+      ...(actionsItem ? [actionsItem] : []),
+      { item: "Inhoud", status: "problem", detail: "Conceptverslag bevat geen inhoud om te beoordelen." },
     ];
     return {
       skill: SKILL_NAME,
@@ -137,8 +274,8 @@ export async function run(params: {
       result: {
         overall_score: scoreOf(checklist),
         checklist,
-        blocking_issues: [...presenceIssues, "Conceptverslag bevat geen inhoud om te beoordelen."],
-        recommendation: "Conceptverslag is nog niet compleet -- menselijke review moet dit eerst beoordelen.",
+        blocking_issues: attentionDetails(checklist),
+        recommendation: buildRecommendation(checklist),
       },
     };
   }
@@ -168,38 +305,48 @@ export async function run(params: {
 
   const textBlock = response.content.find((block) => block.type === "text");
   const parsed: DraftQualityPrecheckLlmOutput =
-    textBlock && textBlock.type === "text"
-      ? JSON.parse(textBlock.text)
-      : { attendees_correct: false, date_correct: false, subject_correct: false, factually_grounded: false, issues: [] };
+    textBlock && textBlock.type === "text" ? JSON.parse(textBlock.text) : NO_LLM_OUTPUT;
+
+  const actionsItem = buildActionsItem({ actionsSectionIsOptional, sections, actionsPresentInSource });
 
   const checklist: ChecklistItem[] = [
-    fieldChecklistItem(attendeesPresent, parsed.attendees_correct, {
-      missing: "Deelnemers ontbreken",
-      correct: "Deelnemers correct overgenomen",
-      incorrect: "Deelnemers wijken af van het transcript",
+    fieldChecklistItem({
+      itemLabel: "Deelnemers",
+      present: attendeesPresent,
+      correct: parsed.attendees.correct,
+      missingStatus: "info",
+      missingDetail: "Geen deelnemers gevonden in het transcript.",
+      okDetail: "Deelnemers correct overgenomen.",
+      warningDetail: parsed.attendees.reason || "Deelnemers wijken mogelijk af van het transcript -- controleer de namen.",
     }),
-    fieldChecklistItem(datePresent, parsed.date_correct, {
-      missing: "Datum ontbreekt",
-      correct: "Datum correct overgenomen",
-      incorrect: "Datum wijkt af van het transcript",
+    fieldChecklistItem({
+      itemLabel: "Datum",
+      present: datePresent,
+      correct: parsed.date.correct,
+      missingStatus: "info",
+      missingDetail: "Datum is niet vastgelegd in het transcript.",
+      okDetail: "Datum correct overgenomen.",
+      warningDetail: parsed.date.reason || "Datum wijkt mogelijk af van het transcript -- controleer de datum.",
     }),
-    fieldChecklistItem(subjectPresent, parsed.subject_correct, {
-      missing: "Onderwerp ontbreekt",
-      correct: "Onderwerp correct overgenomen",
-      incorrect: "Onderwerp wijkt af van het transcript",
+    fieldChecklistItem({
+      itemLabel: "Onderwerp",
+      present: subjectPresent,
+      correct: parsed.subject.correct,
+      missingStatus: "warning",
+      missingDetail: "Onderwerp ontbreekt -- controleer de workflowgegevens.",
+      okDetail: "Onderwerp correct overgenomen.",
+      warningDetail: parsed.subject.reason || "Onderwerp wijkt mogelijk af van het transcript -- controleer het onderwerp.",
     }),
     structureItem,
+    ...(actionsItem ? [actionsItem] : []),
     {
-      item: parsed.factually_grounded ? "Inhoud sluit aan op het transcript" : "Inhoud bevat niet-onderbouwde informatie",
-      passed: parsed.factually_grounded,
+      item: "Inhoud",
+      status: parsed.factually_grounded.grounded ? "ok" : "warning",
+      detail: parsed.factually_grounded.grounded
+        ? "Inhoud sluit aan op het transcript."
+        : parsed.factually_grounded.reason || "Inhoud bevat mogelijk niet-onderbouwde informatie -- controleer dit.",
     },
   ];
-
-  const blockingIssues = [...presenceIssues, ...parsed.issues];
-  const recommendation =
-    blockingIssues.length === 0
-      ? "Alle controles geslaagd -- geen aandachtspunten gevonden."
-      : `${blockingIssues.length} aandachtspunt(en) gevonden -- controleer de checklist voor details.`;
 
   return {
     skill: SKILL_NAME,
@@ -210,8 +357,8 @@ export async function run(params: {
     result: {
       overall_score: scoreOf(checklist),
       checklist,
-      blocking_issues: blockingIssues,
-      recommendation,
+      blocking_issues: attentionDetails(checklist),
+      recommendation: buildRecommendation(checklist),
     },
   };
 }

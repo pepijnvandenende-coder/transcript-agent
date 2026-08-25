@@ -35,6 +35,19 @@ function systemEvent(from: WorkflowState, event: string, to: WorkflowState): Tra
  *    now so the full FSM can be validated and tested ahead of that work.
  */
 const CORE_TRANSITIONS: TransitionRule[] = [
+  // Phase 19: every workflow now starts at CONTEXT_INPUT, not CREATED --
+  // the explicit, mandatory-but-optional-content context step (PvA,
+  // normenkader, vragenlijst, notes, ...) that must be passed through before
+  // transcript upload. "continue_to_transcript" is valid regardless of
+  // whether any context was actually submitted (context.routes.ts's POST
+  // /:id/context is unconditional and untouched by this edge), so "doorgaan
+  // zonder context" is just as valid a path as "doorgaan met context".
+  // "back_to_context" is the mirror edge, used by the transcript screen's
+  // back control -- already-submitted context/notes are untouched by either
+  // direction, since they live in their own tables, not on the workflow row.
+  userAction(WorkflowState.CONTEXT_INPUT, "continue_to_transcript", WorkflowState.CREATED),
+  userAction(WorkflowState.CREATED, "back_to_context", WorkflowState.CONTEXT_INPUT),
+
   userAction(WorkflowState.CREATED, "upload_transcript", WorkflowState.TRANSCRIPT_UPLOADED),
 
   userAction(WorkflowState.TRANSCRIPT_UPLOADED, "submit_for_validation", WorkflowState.VALIDATING_TRANSCRIPT),
@@ -141,7 +154,13 @@ const CORE_TRANSITIONS: TransitionRule[] = [
 
   systemEvent(WorkflowState.REVISING_DRAFT, "draft_revised", WorkflowState.DRAFT_QUALITY_PRECHECK),
 
-  systemEvent(WorkflowState.GENERATING_FINAL, "final_rendered", WorkflowState.COMPLETED),
+  // Phase 18: FinalRenderer's completion now lands on POST_PROCESSING (was
+  // COMPLETED directly) -- the generic follow-up phase that fans out into
+  // whichever post_processing_skill_policies rows are active (see
+  // jobs/runners/postProcessingRunner.ts), then advances to COMPLETED itself
+  // once that single orchestrator job finishes.
+  systemEvent(WorkflowState.GENERATING_FINAL, "final_rendered", WorkflowState.POST_PROCESSING),
+  systemEvent(WorkflowState.POST_PROCESSING, "post_processing_completed", WorkflowState.COMPLETED),
 ];
 
 /**
@@ -161,6 +180,7 @@ const PROCESSING_STATES: WorkflowState[] = [
   WorkflowState.DRAFT_QUALITY_PRECHECK,
   WorkflowState.REVISING_DRAFT,
   WorkflowState.GENERATING_FINAL,
+  WorkflowState.POST_PROCESSING,
 ];
 
 const FAILURE_TRANSITIONS: TransitionRule[] = PROCESSING_STATES.flatMap((state) => [

@@ -60,7 +60,7 @@ describe("auditTrail.recordTransition", () => {
       orderBy: { occurredAt: "asc" },
     });
     expect(rows[0].fromState).toBeNull();
-    expect(rows[0].toState).toBe(WorkflowState.CREATED);
+    expect(rows[0].toState).toBe(WorkflowState.CONTEXT_INPUT);
   });
 
   it("is append-only: each call adds a row rather than mutating an existing one", async () => {

@@ -99,6 +99,7 @@ function draftGeneratorEnvelope(overrides: { confidence?: number } = {}): DraftG
         { heading: "Notulen", content: "y" },
       ],
       coverage: 0.7,
+      actions_present: false,
     },
   };
 }
@@ -114,8 +115,8 @@ function draftQualityPrecheckEnvelope(overrides: { confidence?: number } = {}): 
     result: {
       overall_score: 1,
       checklist: [
-        { item: "Samenvatting", passed: true },
-        { item: "Notulen", passed: true },
+        { item: "Samenvatting", status: "ok", detail: "Structuur voldoet aan het verslagtype." },
+        { item: "Inhoud", status: "ok", detail: "Inhoud sluit aan op het transcript." },
       ],
       blocking_issues: [],
       recommendation: "Looks complete.",
@@ -134,6 +135,7 @@ function draftReviserEnvelope(sections: DraftGeneratorEnvelope["result"]["sectio
       sections,
       changes_applied: ["Aanvulling naar aanleiding van reviewer-feedback: test"],
       unresolved_feedback: [],
+      actions_present: false,
     },
   };
 }
@@ -222,6 +224,11 @@ describe("approval/draftReview", () => {
     const workflow = await engine.createWorkflow({ title, createdById: userId });
     await engine.transition({
       workflowId: workflow.id,
+      trigger: { kind: "user_action", action: "continue_to_transcript" },
+      actor: { actorType: ActorType.USER, actorId: userId },
+    });
+    await engine.transition({
+      workflowId: workflow.id,
       trigger: { kind: "user_action", action: "upload_transcript" },
       actor: { actorType: ActorType.USER, actorId: userId },
     });
@@ -282,6 +289,7 @@ describe("approval/draftReview", () => {
         { heading: "Notulen", content: "y" },
       ],
       coverage: 0.7,
+      actionsPresent: false,
     });
     await handleSkillOutput({
       workflowId: workflow.id,
@@ -381,6 +389,7 @@ describe("approval/draftReview", () => {
       subject: draft.subject,
       sections: revisedSections,
       coverage: draft.coverage ?? undefined,
+      actionsPresent: false,
     });
     expect(revisedDraft.version).toBe(draft.version + 1);
 

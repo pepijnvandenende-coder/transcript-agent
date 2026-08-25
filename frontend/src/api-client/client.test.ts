@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { onSessionInvalid } from "../state/sessionEvents";
 import {
   ApiError,
+  backToContext,
   cancelWorkflow,
+  continueToTranscript,
   createUser,
   createWorkflow,
   explainConflict,
@@ -91,6 +93,30 @@ describe("api-client/client", () => {
     await uploadNotes("w1", { uploadedById: "u1", content: "note text" });
 
     expect(fetchMock).toHaveBeenCalledWith("/workflows/w1/notes", expect.anything());
+  });
+
+  it("continueToTranscript posts to /workflows/:id/actions/continue-to-transcript", async () => {
+    const fetchMock = mockFetchOnce(200, { id: "w1", currentState: "CREATED" });
+
+    const workflow = await continueToTranscript("w1", { actorId: "u1" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/workflows/w1/actions/continue-to-transcript",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ actorId: "u1" }) }),
+    );
+    expect(workflow.currentState).toBe("CREATED");
+  });
+
+  it("backToContext posts to /workflows/:id/actions/back-to-context", async () => {
+    const fetchMock = mockFetchOnce(200, { id: "w1", currentState: "CONTEXT_INPUT" });
+
+    const workflow = await backToContext("w1", { actorId: "u1" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/workflows/w1/actions/back-to-context",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ actorId: "u1" }) }),
+    );
+    expect(workflow.currentState).toBe("CONTEXT_INPUT");
   });
 
   it("submitForValidation posts to /workflows/:id/actions/validate-transcript", async () => {

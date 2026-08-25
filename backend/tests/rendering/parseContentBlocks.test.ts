@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseContentBlocks } from "../../src/rendering/parseContentBlocks";
+import { parseContentBlocks, parseOpenQuestionBlocks } from "../../src/rendering/parseContentBlocks";
 
 // Pure logic -- no database needed.
 describe("rendering/parseContentBlocks", () => {
@@ -91,5 +91,33 @@ describe("rendering/parseContentBlocks", () => {
       { type: "paragraph", text: "Eerste zin." },
       { type: "paragraph", text: "Tweede zin." },
     ]);
+  });
+
+  describe("parseOpenQuestionBlocks", () => {
+    it("splits blank-line-separated groups into separate blocks", () => {
+      const content = "Vraag 1:\nWat is de scope?\n\nVraag 2:\nWie is verantwoordelijk?";
+      expect(parseOpenQuestionBlocks(content)).toEqual(["Vraag 1:\nWat is de scope?", "Vraag 2:\nWie is verantwoordelijk?"]);
+    });
+
+    it("keeps a label and its duiding as one block (no blank line between them)", () => {
+      const blocks = parseOpenQuestionBlocks("Vraag 1:\nWat is de scope?");
+      expect(blocks).toEqual(["Vraag 1:\nWat is de scope?"]);
+    });
+
+    it("treats multiple blank lines the same as a single blank line", () => {
+      const content = "Vraag 1:\nEerste vraag.\n\n\n\nVraag 2:\nTweede vraag.";
+      expect(parseOpenQuestionBlocks(content)).toEqual(["Vraag 1:\nEerste vraag.", "Vraag 2:\nTweede vraag."]);
+    });
+
+    it("handles a single block with no label", () => {
+      expect(parseOpenQuestionBlocks("Geen openstaande vragen of onduidelijkheden.")).toEqual([
+        "Geen openstaande vragen of onduidelijkheden.",
+      ]);
+    });
+
+    it("returns an empty array for empty or whitespace-only content", () => {
+      expect(parseOpenQuestionBlocks("")).toEqual([]);
+      expect(parseOpenQuestionBlocks("   \n\n  ")).toEqual([]);
+    });
   });
 });

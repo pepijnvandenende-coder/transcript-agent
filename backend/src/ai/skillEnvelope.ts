@@ -96,6 +96,10 @@ export const DraftGeneratorResultSchema = z.object({
   subject: z.string(),
   sections: z.array(DraftSectionSchema),
   coverage: z.number().min(0).max(1).optional(),
+  // Single source of truth for whether the source contains concrete
+  // actions/vervolgstappen -- see draftGenerator.ts's ACTIONS_SECTION_HEADING
+  // handling and prisma/schema.prisma's Draft.actionsPresent.
+  actions_present: z.boolean(),
 });
 export type DraftGeneratorResult = z.infer<typeof DraftGeneratorResultSchema>;
 
@@ -107,9 +111,24 @@ export type DraftGeneratorEnvelope = z.infer<typeof DraftGeneratorEnvelopeSchema
 // Phase 7: DraftQualityPrecheck's result -- ADVISORY_ONLY, never gates (see
 // approval/gateway.ts's DraftQualityPrecheck SKILL_ROUTING entry). One
 // checklist item per the resolved ReportTypePolicy's requiredSections.
+//
+// Phase 19 item 1: a plain `passed: boolean` can't tell a human reviewer
+// "this is fine, the source just didn't mention it" apart from "this needs
+// your attention" -- both used to render as the same failing marker. Four
+// statuses instead: `ok` (check passed), `info` (nothing to flag -- the
+// underlying information simply isn't in the source, e.g. no actions were
+// discussed), `warning` (worth a human look, but not a reason to distrust
+// the draft on its own), `problem` (the draft has nothing meaningful to
+// review, e.g. no content sections at all). `detail` carries the concrete,
+// per-item explanation a reviewer needs to act on a non-`ok` status --
+// see draftQualityPrecheck.ts.
+export const PrecheckStatusSchema = z.enum(["ok", "info", "warning", "problem"]);
+export type PrecheckStatus = z.infer<typeof PrecheckStatusSchema>;
+
 export const PrecheckChecklistItemSchema = z.object({
   item: z.string(),
-  passed: z.boolean(),
+  status: PrecheckStatusSchema,
+  detail: z.string(),
 });
 export type PrecheckChecklistItem = z.infer<typeof PrecheckChecklistItemSchema>;
 
@@ -135,6 +154,10 @@ export const DraftReviserResultSchema = z.object({
   sections: z.array(DraftSectionSchema),
   changes_applied: z.array(z.string()),
   unresolved_feedback: z.array(z.string()),
+  // Same single source of truth as DraftGeneratorResult.actions_present,
+  // re-derived on every revision since the source/feedback re-examined here
+  // can change the answer.
+  actions_present: z.boolean(),
 });
 export type DraftReviserResult = z.infer<typeof DraftReviserResultSchema>;
 
@@ -156,3 +179,71 @@ export const FinalRendererEnvelopeSchema = SkillEnvelopeSchema.extend({
   result: FinalRendererResultSchema,
 });
 export type FinalRendererEnvelope = z.infer<typeof FinalRendererEnvelopeSchema>;
+
+// Phase 18: the POST_PROCESSING orchestrator's own envelope -- one row per
+// workflow, summarizing which of the active post_processing_skill_policies
+// actually ran. The sub-skills' own raw output is NOT nested in here -- each
+// gets its own ai_outputs governance row (see the OpenQuestionsAnalyzer/
+// CriteriaCoverageAnalyzer schemas below) and its own post_processing_results
+// row, mirroring how every other multi-row-writing skill (Merger, DraftGenerator,
+// ...) keeps its own governance envelope separate from the domain rows it writes.
+export const PostProcessingResultStatusSchema = z.enum(["completed", "failed", "skipped"]);
+
+export const PostProcessingExecutionSchema = z.object({
+  skill_key: z.string(),
+  status: PostProcessingResultStatusSchema,
+});
+export type PostProcessingExecution = z.infer<typeof PostProcessingExecutionSchema>;
+
+export const PostProcessingResultSchema = z.object({
+  executed: z.array(PostProcessingExecutionSchema),
+});
+export type PostProcessingOrchestratorResult = z.infer<typeof PostProcessingResultSchema>;
+
+export const PostProcessingEnvelopeSchema = SkillEnvelopeSchema.extend({
+  result: PostProcessingResultSchema,
+});
+export type PostProcessingEnvelope = z.infer<typeof PostProcessingEnvelopeSchema>;
+
+// Phase 18: OpenQuestionsAnalyzer's result -- one of the two example
+// follow-up skills. `question`/`explanation` are Dutch prose (per the
+// codebase's "Dutch AI output" rule); the field names themselves stay
+// English, matching every other skill's result schema.
+export const OpenQuestionSchema = z.object({
+  question: z.string(),
+  explanation: z.string(),
+});
+export type OpenQuestion = z.infer<typeof OpenQuestionSchema>;
+
+export const OpenQuestionsResultSchema = z.object({
+  open_questions: z.array(OpenQuestionSchema),
+});
+export type OpenQuestionsResult = z.infer<typeof OpenQuestionsResultSchema>;
+
+export const OpenQuestionsEnvelopeSchema = SkillEnvelopeSchema.extend({
+  result: OpenQuestionsResultSchema,
+});
+export type OpenQuestionsEnvelope = z.infer<typeof OpenQuestionsEnvelopeSchema>;
+
+// Phase 18: CriteriaCoverageAnalyzer's result -- the second example
+// follow-up skill, only ever run when a "normenkader" context_items row
+// exists (see postProcessingRunner.ts). One row per criterion/norm the model
+// identified in the supplied context, each judged against the final report.
+export const CriteriaCoverageStatusSchema = z.enum(["covered", "partially_covered", "not_covered"]);
+
+export const CriteriaCoverageItemSchema = z.object({
+  criterion: z.string(),
+  status: CriteriaCoverageStatusSchema,
+  explanation: z.string(),
+});
+export type CriteriaCoverageItem = z.infer<typeof CriteriaCoverageItemSchema>;
+
+export const CriteriaCoverageResultSchema = z.object({
+  items: z.array(CriteriaCoverageItemSchema),
+});
+export type CriteriaCoverageResult = z.infer<typeof CriteriaCoverageResultSchema>;
+
+export const CriteriaCoverageEnvelopeSchema = SkillEnvelopeSchema.extend({
+  result: CriteriaCoverageResultSchema,
+});
+export type CriteriaCoverageEnvelope = z.infer<typeof CriteriaCoverageEnvelopeSchema>;
